@@ -69,7 +69,7 @@ export default function DashboardPage() {
     {
       title: "Siswa aktif",
       value: data.studentsCount?.toString() || "0",
-      subtitle: `Siswa terdaftar`,
+      subtitle: `${data.newStudentsCount || 0} baru bulan ini`,
       icon: Users,
       show: true,
     },
@@ -240,7 +240,7 @@ export default function DashboardPage() {
                             {participant?.name ?? "—"}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {pkg?.name ?? "—"}
+                            {pkg?.nama ?? "—"}
                           </p>
                         </div>
                       </div>

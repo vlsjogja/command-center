@@ -46,17 +46,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Payment, PaymentStatus } from "@/types";
-import { 
-  dummyPayments, 
-  dummyParticipants, 
-  dummyPackages 
-} from "@/lib/dummy-data";
 import { UserPlus, Loader2 } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate, formatDateWithDay, calculateEffectiveStatus } from "@/lib/format";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
-import { getPayments, getSelectorData, addPayment, updatePayment, deletePayment } from "./actions";
+import { getPayments, getSelectorData, addPayment, updatePayment, deletePayment, getMessageTemplates } from "./actions";
 import type { Participant, Package } from "@/types";
 
 type PaymentForm = {
@@ -103,6 +98,7 @@ export default function PaymentsPage() {
   const [isPackageSelectOpen, setIsPackageSelectOpen] = useState(false);
   const [packageSearch, setPackageSearch] = useState("");
   const [packageVisibleCount, setPackageVisibleCount] = useState(5);
+  const [messageTemplates, setMessageTemplates] = useState<Record<string, string>>({});
 
   // Delete Confirm State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -124,9 +120,21 @@ export default function PaymentsPage() {
     }
   }
 
+  async function fetchTemplates() {
+    const { data } = await getMessageTemplates();
+    if (data) {
+      const templatesMap: Record<string, string> = {};
+      data.forEach((t: any) => {
+        templatesMap[t.key] = t.content;
+      });
+      setMessageTemplates(templatesMap);
+    }
+  }
+
   useEffect(() => {
     fetchPayments();
     fetchSelectorData();
+    fetchTemplates();
   }, []);
 
   const currentYear = new Date().getFullYear();
@@ -153,7 +161,8 @@ export default function PaymentsPage() {
       p.paymentStatus,
       p.billingTime,
       p.paymentTime,
-      pkg?.durasi ?? 1
+      pkg?.durasi ?? 1,
+      pkg?.type
     );
 
     return { 
@@ -165,19 +174,62 @@ export default function PaymentsPage() {
 
   const filtered = enhancedPayments.filter((p) => {
     const billingDate = p.nextBillingDate ? new Date(p.nextBillingDate) : null;
+    const paymentDate = p.paymentTime ? new Date(p.paymentTime) : null;
+    const pkg = (p as any).package;
+    const isSubscription = pkg?.type === "subscription";
+
     const matchSearch =
       ((p as any).participant?.name.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       (p.notes?.toLowerCase().includes(search.toLowerCase()) ?? false);
-    const matchYear = yearFilter ? billingDate?.getFullYear().toString() === yearFilter : true;
-    const matchMonth = monthFilter ? billingDate?.getMonth().toString() === monthFilter : true;
+
+    if (isSubscription) {
+      // For subscriptions, match if it's the billing month OR the payment month
+      const matchesBillingMonth = monthFilter ? billingDate?.getMonth().toString() === monthFilter : true;
+      const matchesPaymentMonth = monthFilter ? paymentDate?.getMonth().toString() === monthFilter : true;
+      const matchesBillingYear = yearFilter ? billingDate?.getFullYear().toString() === yearFilter : true;
+      const matchesPaymentYear = yearFilter ? paymentDate?.getFullYear().toString() === yearFilter : true;
+
+      return matchSearch && (
+        (matchesBillingMonth && matchesBillingYear) || 
+        (matchesPaymentMonth && matchesPaymentYear)
+      );
+    }
+
+    // Default logic for one-time
+    const dateToCompare = (p.effectiveStatus === "success" && paymentDate) ? paymentDate : billingDate;
+    const matchYear = yearFilter ? dateToCompare?.getFullYear().toString() === yearFilter : true;
+    const matchMonth = monthFilter ? dateToCompare?.getMonth().toString() === monthFilter : true;
     const matchStatus = statusFilter === "all" || p.effectiveStatus === statusFilter;
+    
     return matchSearch && matchYear && matchMonth && matchStatus;
   });
 
   const statusGroups = {
-    belumBayar: filtered.filter((p) => p.effectiveStatus === "pending"),
+    belumBayar: filtered.filter((p) => {
+      const pkg = (p as any).package;
+      if (pkg?.type !== "subscription") return false;
+      
+      const billingDate = p.nextBillingDate ? new Date(p.nextBillingDate) : null;
+      const matchesBillingMonth = monthFilter ? billingDate?.getMonth().toString() === monthFilter : true;
+      const matchesBillingYear = yearFilter ? billingDate?.getFullYear().toString() === yearFilter : true;
+      
+      // Case 1: Strictly pending
+      if (p.effectiveStatus === "pending" && matchesBillingMonth && matchesBillingYear) return true;
+      
+      // Case 2: Paid early (Success but we are looking at the billing month)
+      const isPaidEarly = p.paymentStatus === "success" && p.paymentTime && new Date(p.billingTime) > new Date(p.paymentTime);
+      if (isPaidEarly && matchesBillingMonth && matchesBillingYear) return true;
+      
+      return false;
+    }),
     jatuhTempo: filtered.filter((p) => p.effectiveStatus === "overdue"),
-    lunas: filtered.filter((p) => p.effectiveStatus === "success"),
+    lunas: filtered.filter((p) => {
+      const paymentDate = p.paymentTime ? new Date(p.paymentTime) : null;
+      const matchesPaymentMonth = monthFilter ? paymentDate?.getMonth().toString() === monthFilter : true;
+      const matchesPaymentYear = yearFilter ? paymentDate?.getFullYear().toString() === yearFilter : true;
+      
+      return p.paymentStatus === "success" && matchesPaymentMonth && matchesPaymentYear;
+    }),
   };
 
   const [activeTab, setActiveTab] = useState<"belumBayar" | "jatuhTempo" | "lunas">("belumBayar");
@@ -515,8 +567,28 @@ export default function PaymentsPage() {
                                 onClick={() => {
                                   if (!participant?.phone) return toast.error("Nomor telepon peserta tidak tersedia");
                                   const targetDate = payment.nextBillingDate ?? payment.billingTime;
-                                  const messagePrefix = activeTab === "belumBayar" ? "Jangan lupa untuk melakukan pembayaran" : "Peringatan:\n\nPembayaran Anda telah jatuh tempo sejak";
-                                  const text = encodeURIComponent(`Halo *${participant.name}*,\n\n${messagePrefix} paket ${pkg?.nama || ''} sebesar *${formatCurrency(payment.amount)}* sebelum tanggal *${formatDateWithDay(targetDate as string)}*.`);
+                                  
+                                  const templateKey = activeTab === "belumBayar" ? "payment_reminder" : "overdue_reminder";
+                                  const template = messageTemplates[templateKey];
+                                  
+                                  let message = "";
+                                  if (template) {
+                                    // Use template from database
+                                    message = template
+                                      .replace(/{{nama_siswa}}/g, participant.name)
+                                      .replace(/{{nominal_pembayaran}}/g, formatCurrency(payment.amount))
+                                      .replace(/{{nama_paket_pembayaran}}/g, pkg?.nama || "")
+                                      .replace(/{{tanggal_jatuh_tempo}}/g, formatDateWithDay(targetDate as string))
+                                      .replace(/{{bold_start}}/g, "*")
+                                      .replace(/{{bold_end}}/g, "*")
+                                      .replace(/{{break_space}}/g, "\n");
+                                  } else {
+                                    // Fallback to hardcoded message if template not found
+                                    const messagePrefix = activeTab === "belumBayar" ? "Jangan lupa untuk melakukan pembayaran" : "Peringatan:\n\nPembayaran Anda telah jatuh tempo sejak";
+                                    message = `Halo *${participant.name}*,\n\n${messagePrefix} paket ${pkg?.nama || ''} sebesar *${formatCurrency(payment.amount)}* sebelum tanggal *${formatDateWithDay(targetDate as string)}*.`;
+                                  }
+                                  
+                                  const text = encodeURIComponent(message);
                                   window.open(`https://wa.me/${participant.phone}?text=${text}`, "_blank");
                                 }}
                                 title="Reminder Pembayaran"
@@ -660,25 +732,25 @@ export default function PaymentsPage() {
 
         {/* Tab Content */}
         {activeTab === "belumBayar" && renderPaymentTable("Belum Bayar", <Clock className="h-5 w-5" />, <>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Peserta</TableHead>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Paket Pembayaran</TableHead>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Jumlah</TableHead>
+          <TableHead className="font-semibold">Peserta</TableHead>
+          <TableHead className="font-semibold">Paket Pembayaran</TableHead>
+          <TableHead className="font-semibold">Jumlah</TableHead>
           <TableHead className="font-semibold hidden md:table-cell">Jatuh Tempo</TableHead>
           <TableHead className="font-semibold text-right">Aksi</TableHead>
         </>)}
 
         {activeTab === "jatuhTempo" && renderPaymentTable("Jatuh Tempo", <AlertTriangle className="h-5 w-5" />, <>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Peserta</TableHead>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Paket Pembayaran</TableHead>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Jumlah</TableHead>
+          <TableHead className="font-semibold">Peserta</TableHead>
+          <TableHead className="font-semibold">Paket Pembayaran</TableHead>
+          <TableHead className="font-semibold">Jumlah</TableHead>
           <TableHead className="font-semibold hidden md:table-cell">Waktu Tagihan</TableHead>
           <TableHead className="font-semibold text-right">Aksi</TableHead>
         </>)}
 
         {activeTab === "lunas" && renderPaymentTable("Lunas", <CheckCircle2 className="h-5 w-5" />, <>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Peserta</TableHead>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Paket Pembayaran</TableHead>
-          <TableHead className="text-xs font-semibold uppercase tracking-wide">Jumlah</TableHead>
+          <TableHead className="font-semibold">Peserta</TableHead>
+          <TableHead className="font-semibold">Paket Pembayaran</TableHead>
+          <TableHead className="font-semibold">Jumlah</TableHead>
           <TableHead className="font-semibold hidden md:table-cell">Waktu Tagihan</TableHead>
           <TableHead className="font-semibold hidden lg:table-cell">Waktu Bayar</TableHead>
           <TableHead className="font-semibold text-right">Aksi</TableHead>

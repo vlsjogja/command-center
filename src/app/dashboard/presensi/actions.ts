@@ -85,7 +85,12 @@ export async function saveAttendanceRecord(data: {
 
 export async function getTodayData() {
   try {
-    const teachersData = await db.query.teachers.findMany();
+    const teachersData = await db.query.teachers.findMany({
+      with: {
+        user: true,
+      },
+    });
+
     const pkgsData = await db.query.classPackages.findMany({
       with: {
         enrollments: {

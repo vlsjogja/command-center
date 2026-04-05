@@ -334,10 +334,10 @@ export default function ClassesPage() {
                       value={form.durationValue} 
                       onChange={(e) => setForm({ ...form, durationValue: e.target.value })} 
                       placeholder="Cth: 2" 
-                      className="w-24"
+                      className="w-24 h-10"
                     />
                     <Select value={form.durationUnit} onValueChange={(val) => { if (val) setForm({ ...form, durationUnit: val }); }}>
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-full h-10">
                         <SelectValue placeholder="Pilih unit..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -382,13 +382,15 @@ export default function ClassesPage() {
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <CardTitle className="text-lg font-bold text-primary">{pkg.name}</CardTitle>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                      <div className="flex gap-6">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
                         <BookOpen className="h-3.5 w-3.5" />
                         {pkg.learningDuration}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                        <Users className="h-3.5 w-3.5" />
-                        {assignedCount} Siswa Terdaftar
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                          <Users className="h-3.5 w-3.5" />
+                          {assignedCount} Siswa Terdaftar
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-1 shrink-0 -mt-1 -mr-2">
@@ -402,7 +404,7 @@ export default function ClassesPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4 flex-grow flex flex-col justify-between space-y-4">
-                  <p className="text-sm text-muted-foreground line-clamp-3 min-h-[4.5rem]">
+                  <p className="text-sm text-muted-foreground line-clamp-3 min-h-[1rem]">
                     {pkg.description || "Tidak ada deskripsi untuk kelas ini."}
                   </p>
                   
@@ -452,10 +454,10 @@ export default function ClassesPage() {
                     value={form.durationValue} 
                     onChange={(e) => setForm({ ...form, durationValue: e.target.value })} 
                     placeholder="Cth: 2" 
-                    className="w-24"
+                    className="w-24 h-10"
                   />
                   <Select value={form.durationUnit} onValueChange={(val) => { if (val) setForm({ ...form, durationUnit: val }); }}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full h-10">
                       <SelectValue placeholder="Pilih unit..." />
                     </SelectTrigger>
                     <SelectContent>

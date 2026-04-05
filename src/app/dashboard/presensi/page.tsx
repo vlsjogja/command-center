@@ -98,7 +98,9 @@ export default function AttendancePage() {
   // History State
   const [searchCourse, setSearchCourse] = useState("");
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
-  const [filterMonth, setFilterMonth] = useState<string>(new Date().getMonth().toString());
+  const [filterMonth, setFilterMonth] = useState<string>(
+    new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(new Date())
+  );
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [allParticipants, setAllParticipants] = useState<Participant[]>([]);
@@ -109,19 +111,19 @@ export default function AttendancePage() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 1 + i).toString());
   const months = [
-    { value: "all", label: "Semua Bulan" },
-    { value: "0", label: "Januari" },
-    { value: "1", label: "Februari" },
-    { value: "2", label: "Maret" },
-    { value: "3", label: "April" },
-    { value: "4", label: "Mei" },
-    { value: "5", label: "Juni" },
-    { value: "6", label: "Juli" },
-    { value: "7", label: "Agustus" },
-    { value: "8", label: "September" },
-    { value: "9", label: "Oktober" },
-    { value: "10", label: "November" },
-    { value: "11", label: "Desember" },
+    { value: "Semua Bulan", label: "Semua Bulan" },
+    { value: "Januari", label: "Januari" },
+    { value: "Februari", label: "Februari" },
+    { value: "Maret", label: "Maret" },
+    { value: "April", label: "April" },
+    { value: "Mei", label: "Mei" },
+    { value: "Juni", label: "Juni" },
+    { value: "Juli", label: "Juli" },
+    { value: "Agustus", label: "Agustus" },
+    { value: "September", label: "September" },
+    { value: "Oktober", label: "Oktober" },
+    { value: "November", label: "November" },
+    { value: "Desember", label: "Desember" },
   ];
 
   const fetchHistory = async () => {
@@ -187,8 +189,9 @@ export default function AttendancePage() {
                   id: `${teacher.id}-${className}-${day}-${idx}`,
                   className,
                   teacherId: teacher.id,
-                  teacherName: teacher.name,
+                  teacherName: teacher.user?.name || teacher.name,
                   teacherPhone: teacher.phone,
+
                   day,
                   startTime: start?.trim() || "00:00",
                   endTime: end?.trim() || "00:00",
@@ -255,7 +258,11 @@ export default function AttendancePage() {
     const recordDate = new Date(record.date);
     const matchCourse = record.className.toLowerCase().includes(searchCourse.toLowerCase());
     const matchYear = recordDate.getFullYear().toString() === filterYear;
-    const matchMonth = filterMonth === "all" || recordDate.getMonth().toString() === filterMonth;
+    
+    // Month name comparison (case-insensitive to be safe)
+    const recordMonthName = new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(recordDate);
+    const matchMonth = filterMonth === "Semua Bulan" || recordMonthName.toLowerCase() === filterMonth.toLowerCase();
+    
     return matchCourse && matchYear && matchMonth;
   });
 
@@ -615,49 +622,57 @@ export default function AttendancePage() {
         {/* --- HISTORY TAB (Super Admin) --- */}
         <TabsContent value="riwayat" className="space-y-6">
           {/* History Filters */}
-          <div className="flex flex-col lg:flex-row gap-4 items-end">
-            <div className="grid gap-2 w-full lg:flex-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ml-1">Cari Kursus</label>
+          <div className="flex flex-col lg:flex-row gap-3 items-end bg-muted/40 p-4 rounded-xl border border-border/50">
+            <div className="grid gap-1.5 w-full lg:w-[350px]">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Cari Kursus</label>
               <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/60" />
                 <Input 
                   placeholder="Cari nama kursus..." 
-                  className="pl-10 h-10 rounded-lg bg-card border border-border/60 focus-visible:ring-0 shadow-none text-sm placeholder:text-muted-foreground/60" 
+                  className="pl-10 h-10 rounded-lg bg-card border border-border/60 focus-visible:ring-1 focus-visible:ring-primary shadow-none text-sm placeholder:text-muted-foreground/50" 
                   value={searchCourse}
                   onChange={(e) => setSearchCourse(e.target.value)}
                 />
               </div>
             </div>
-            <div className="grid gap-2 w-full lg:w-40">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ml-1">Tahun</label>
-              <Select value={filterYear} onValueChange={(v) => v && setFilterYear(v)}>
-                <SelectTrigger className="h-10 rounded-lg bg-card border border-border/60 font-medium text-sm focus-visible:ring-0 shadow-none">
-                  <SelectValue placeholder="Tahun" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2 w-full lg:w-56">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ml-1">Bulan</label>
-              <Select value={filterMonth} onValueChange={(v) => v && setFilterMonth(v)}>
-                <SelectTrigger className="h-10 rounded-lg bg-card border border-border/60 font-medium text-sm focus-visible:ring-0 shadow-none">
-                  <SelectValue placeholder="Bulan" />
-                </SelectTrigger>
-                    <SelectContent>
-                      {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+            
+            <div className="flex gap-1.5 w-full lg:w-auto items-end">
+              <div className="grid gap-1.5 w-full lg:w-24">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Tahun</label>
+                <Select value={filterYear} onValueChange={(v) => v && setFilterYear(v)}>
+                  <SelectTrigger className="w-full h-10 rounded-lg bg-card border border-border/60 font-medium text-sm focus-visible:ring-1 focus-visible:ring-primary shadow-none capitalize">
+                    <SelectValue placeholder="Tahun" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-1.5 w-full lg:w-40">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Bulan</label>
+                <Select value={filterMonth} onValueChange={(v) => v && setFilterMonth(v)}>
+                  <SelectTrigger className="w-full h-10 rounded-lg bg-card border border-border/60 font-medium text-sm focus-visible:ring-1 focus-visible:ring-primary shadow-none">
+                    <SelectValue placeholder="Bulan" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
                 <Button 
                   variant="outline" 
-                  className="h-10 w-10 p-0 rounded-lg border-muted hover:bg-muted" 
-                  onClick={() => { setSearchCourse(""); setFilterMonth("all"); }}
+                  className="h-10 w-10 p-0 rounded-lg border-muted-foreground/20 hover:bg-muted hover:border-muted-foreground/40 transition-all font-semibold" 
+                  onClick={() => { setSearchCourse(""); setFilterMonth("Semua Bulan"); }}
+                  title="Reset Filter"
                 >
-                  <Filter className="h-4 w-4" />
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+          </div>
 
           {/* Records Table */}
           {/* Classes Overview Grid */}

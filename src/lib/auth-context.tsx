@@ -3,11 +3,10 @@
 import {
   createContext,
   useContext,
-  useState,
-  useEffect,
   type ReactNode,
 } from "react";
 import type { User, Role } from "@/types";
+import { useSession, signIn, signOut } from "next-auth/react";
 
 interface AuthContextType {
   user: User | null;
@@ -19,36 +18,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-import { verifyLogin } from "@/app/auth-actions";
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("auth_user");
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem("auth_user");
-      }
-    }
-    setIsLoading(false);
-  }, []);
+  const { data: session, status } = useSession();
+  const isLoading = status === "loading";
+  const user = session?.user as User | null;
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    const res = await verifyLogin(email, password);
-    if (res.success && res.user) {
-      setUser(res.user);
-      localStorage.setItem("auth_user", JSON.stringify(res.user));
-      return true;
-    }
-    return false;
+    const res = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+    
+    return !!res?.ok;
   };
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem("auth_user");
+    signOut({ callbackUrl: "/" });
   };
 
   const hasAccess = (allowedRoles: Role[]): boolean => {

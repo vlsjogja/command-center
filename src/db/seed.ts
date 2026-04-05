@@ -16,6 +16,8 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 import * as schema from "./schema";
 
+import bcrypt from "bcryptjs";
+
 // ─── Configuration ────────────────────────────────────
 const SUPER_ADMIN = {
   name: "Super Admin",
@@ -24,14 +26,9 @@ const SUPER_ADMIN = {
   role: "super_admin" as const,
 };
 
-// ─── Simple password hash (SHA-256) ───────────────────
-// Untuk production, ganti dengan bcrypt/argon2
+// ─── Secure password hash (bcrypt) ────────────────────
 async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return bcrypt.hash(password, 10);
 }
 
 // ─── Main Seed Function ──────────────────────────────

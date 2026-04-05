@@ -49,13 +49,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Participant, Payment, Package, ActivityLog } from "@/types";
-import { 
-  dummyParticipants, 
-  dummyPayments, 
-  dummyPackages, 
-  dummyActivityLogs, 
-  dummyUsers 
-} from "@/lib/dummy-data";
 import { useAuth } from "@/lib/auth-context";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { calculateEffectiveStatus } from "@/lib/format";
@@ -76,6 +69,239 @@ const emptyForm: FormData = {
   reason: "",
 };
 
+const statusLabel = (status: string) => {
+  switch (status) {
+    case "active": return "Aktif";
+    case "inactive": return "Tidak Aktif";
+    case "graduated": return "Lulus";
+    default: return status;
+  }
+};
+
+const statusBadge = (status: string) => {
+  switch (status) {
+    case "active":
+      return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Aktif</Badge>;
+    case "inactive":
+      return <Badge variant="secondary">Tidak Aktif</Badge>;
+    case "graduated":
+      return <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">Lulus</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+
+interface LogDialogProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  participant: Participant | null;
+  search: string;
+  onSearchChange: (search: string) => void;
+}
+
+const LogDialog = ({ isOpen, onOpenChange, participant, search, onSearchChange }: LogDialogProps) => {
+  if (!participant) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(v) => { onOpenChange(v); if (!v) onSearchChange(""); }}>
+      <DialogContent className="sm:max-w-md max-h-[80vh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-primary" /> Log Aktivitas: {participant.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="pt-4 px-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Cari aktivitas..." 
+              className="pl-9 h-9" 
+              value={search} 
+              onChange={(e) => onSearchChange(e.target.value)} 
+            />
+          </div>
+        </div>
+        <div className="space-y-6 py-4 px-2 mt-2 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin">
+          {/* Unified Logs (Chronological) */}
+          {(() => {
+            const allLogs = [
+              // 1. Initial Creation
+              {
+                id: 'creation',
+                type: 'creation',
+                timestamp: new Date(participant.createdAt),
+                title: 'Pendaftaran Siswa',
+                details: `Dimasukkan oleh ${participant.createdBy || "Admin"}`,
+                performedBy: participant.createdBy || "Admin",
+                colorClass: "bg-emerald-500",
+                borderClass: "border-emerald-200",
+                titleClass: "text-emerald-700",
+                bgClass: "bg-emerald-50/30"
+              },
+              // 2. Activity Logs
+              ...(participant.activityLogs || []).map(log => {
+                const isPayment = log.action === 'payment_success';
+                const isEnrollment = ['class_assign', 'enroll', 'class_move'].includes(log.action);
+                
+                let label: string = log.action;
+                let colorClass = "bg-slate-500";
+                let borderClass = "border-slate-200";
+                let titleClass = "text-slate-700";
+                let bgClass = "bg-slate-50/50";
+
+                if (isPayment) {
+                  colorClass = "bg-blue-500";
+                  borderClass = "border-blue-200";
+                  titleClass = "text-blue-700";
+                  bgClass = "bg-blue-50/50";
+                  label = "Pembayaran Berhasil";
+                } else if (isEnrollment) {
+                  colorClass = "bg-indigo-500";
+                  borderClass = "border-indigo-200";
+                  titleClass = "text-indigo-700";
+                  bgClass = "bg-indigo-50/50";
+                  label = log.action === 'class_move' ? "Perpindahan Kelas" : "Penempatan Kelas";
+                }
+
+                return {
+                  id: log.id,
+                  type: 'activity',
+                  timestamp: new Date(log.timestamp),
+                  title: label,
+                  details: log.details,
+                  performedBy: log.performedBy,
+                  colorClass,
+                  borderClass,
+                  titleClass,
+                  bgClass
+                };
+              }),
+              // 3. Status History
+              ...(participant.statusHistory || []).map((log, idx) => ({
+                id: `status-${idx}`,
+                type: 'status',
+                timestamp: new Date(log.changedAt),
+                title: `Perubahan Status: ${statusLabel(log.status)}`,
+                details: log.reason || "Perubahan status manual",
+                performedBy: log.changedBy,
+                colorClass: "bg-slate-400",
+                borderClass: "border-slate-200",
+                titleClass: "text-slate-700",
+                bgClass: "bg-slate-50/50"
+              }))
+            ];
+
+            const filteredLogs = allLogs
+              .filter(log => 
+                log.title.toLowerCase().includes(search.toLowerCase()) || 
+                log.details.toLowerCase().includes(search.toLowerCase())
+              )
+              .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+            if (filteredLogs.length === 0) {
+              return (
+                <div className="text-center py-10">
+                  <p className="text-sm text-muted-foreground">Aktivitas tidak ditemukan.</p>
+                </div>
+              );
+            }
+
+            return filteredLogs.map((log) => (
+              <div key={log.id} className={`relative pl-6 border-l-2 ${log.borderClass} pb-2`}>
+                <div className={`absolute -left-[9px] top-0 h-4 w-4 rounded-full ${log.colorClass} border-2 border-white shadow-sm`} />
+                <div className="space-y-1">
+                  <p className={`text-sm font-semibold ${log.titleClass}`}>{log.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {log.timestamp.toLocaleString('id-ID', { 
+                      day: 'numeric', 
+                      month: 'long', 
+                      year: 'numeric', 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </p>
+                  <div className={`${log.bgClass} p-2 rounded text-sm border border-transparent hover:border-muted transition-colors`}>
+                    <p>{log.details}</p>
+                    {log.type !== 'creation' && (
+                      <p className="text-xs text-muted-foreground mt-1 text-right italic">
+                        Oleh {log.performedBy}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>Tutup</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+interface ParticipantFormProps {
+  form: FormData;
+  setForm: (form: FormData) => void;
+  initialStatus: Participant["status"] | null;
+}
+
+const ParticipantForm = ({ form, setForm, initialStatus }: ParticipantFormProps) => {
+  return (
+    <div className="grid gap-4 py-4">
+      <div className="grid gap-2">
+        <Label htmlFor="name">Nama Lengkap *</Label>
+        <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Masukkan nama lengkap" />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="email">Email *</Label>
+        <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@contoh.com" />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="phone">Telepon</Label>
+        <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="081234567890" />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="address">Alamat</Label>
+        <Textarea id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Masukkan alamat" rows={2} />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="status">Status</Label>
+        <Select value={form.status} onValueChange={(val) => { if (val) setForm({ ...form, status: val as Participant["status"] }); }}>
+          <SelectTrigger><SelectValue>{form.status === "active" ? "Aktif" : form.status === "inactive" ? "Tidak Aktif" : "Lulus"}</SelectValue></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Aktif</SelectItem>
+            <SelectItem value="inactive">Tidak Aktif</SelectItem>
+            <SelectItem value="graduated">Lulus</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {form.status === "inactive" && initialStatus !== "inactive" && (
+        <div className="grid gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <Label htmlFor="reason">Alasan Tidak Aktif *</Label>
+          <Textarea 
+            id="reason" 
+            value={form.reason} 
+            onChange={(e) => setForm({ ...form, reason: e.target.value })} 
+            placeholder="Masukkan alasan siswa dinonaktifkan" 
+            rows={2} 
+          />
+        </div>
+      )}
+      <div className="grid gap-2">
+        <Label htmlFor="joinDate">Tanggal Bergabung *</Label>
+        <Input 
+          id="joinDate" 
+          type="date" 
+          value={form.createdAt} 
+          onChange={(e) => setForm({ ...form, createdAt: e.target.value })} 
+        />
+      </div>
+    </div>
+  );
+};
+
 export default function ParticipantsPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -90,6 +316,7 @@ export default function ParticipantsPage() {
   const [csvPreview, setCsvPreview] = useState<(Omit<Participant, "id">)[]>([]);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
+  const [logSearch, setLogSearch] = useState("");
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -226,20 +453,6 @@ export default function ParticipantsPage() {
     return cleaned;
   };
 
-  const getParticipantPayments = (id: string) => {
-    return dummyPayments
-      .filter((pay) => pay.participantId === id)
-      .map((pay) => {
-        const pkg = dummyPackages.find((p) => p.id === pay.classPackageId);
-        const { effectiveStatus } = calculateEffectiveStatus(
-          pay.paymentStatus,
-          pay.billingTime,
-          pay.paymentTime,
-          pkg?.durasi ?? 1
-        );
-        return { ...pay, effectiveStatus };
-      });
-  };
 
   function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -304,181 +517,6 @@ export default function ParticipantsPage() {
     URL.revokeObjectURL(url);
   }
 
-  const statusLabel = (status: string) => {
-    switch (status) {
-      case "active": return "Aktif";
-      case "inactive": return "Tidak Aktif";
-      case "graduated": return "Lulus";
-      default: return status;
-    }
-  };
-
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Aktif</Badge>;
-      case "inactive":
-        return <Badge variant="secondary">Tidak Aktif</Badge>;
-      case "graduated":
-        return <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">Lulus</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const LogDialog = () => {
-    if (!selectedParticipant) return null;
-    const payments = getParticipantPayments(selectedParticipant.id);
-    
-    return (
-      <Dialog open={isLogOpen} onOpenChange={setIsLogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-primary" /> Log Aktivitas: {selectedParticipant.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            {/* Pendaftaran */}
-            <div className="relative pl-6 border-l-2 border-emerald-200 pb-2">
-              <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-emerald-500 border-2 border-white shadow-sm" />
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-emerald-700">Pendaftaran Siswa</p>
-                <p className="text-xs text-muted-foreground">{new Date(selectedParticipant.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                <p className="text-sm">Dimasukkan oleh <span className="font-medium">{selectedParticipant.createdBy || "Admin"}</span></p>
-              </div>
-            </div>
-
-            {/* Riwayat Kelas (Assignments/Moves) */}
-            {dummyActivityLogs
-              .filter(log => 
-                log.targetId === selectedParticipant.id && 
-                ["class_assign", "class_move", "class_unenroll", "enroll"].includes(log.action)
-              )
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-              .map((log) => (
-                <div key={log.id} className="relative pl-6 border-l-2 border-indigo-200 pb-2">
-                  <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-indigo-500 border-2 border-white shadow-sm" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-indigo-700">
-                      {log.action === "class_assign" || log.action === "enroll" ? "Penempatan Kelas" : 
-                       log.action === "class_move" ? "Perpindahan Kelas" : "Hapus dari Kelas"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                    <div className="bg-indigo-50/50 p-2 rounded text-sm border border-transparent hover:border-indigo-100 transition-colors">
-                      <p>{log.details}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Oleh <span className="font-medium">{dummyUsers.find(u => u.id === log.performedBy)?.name || log.performedBy}</span></p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-            {/* Riwayat Pembayaran */}
-            {payments.length > 0 && payments.map((pay) => {
-              const pkg = dummyPackages.find(p => p.id === pay.classPackageId);
-              
-              const statusConfig: Record<string, { label: string; color: string; bgColor: string; dotColor: string }> = {
-                success: { label: "Pembayaran Berhasil", color: "text-blue-700", bgColor: "bg-blue-50/50", dotColor: "bg-blue-500" },
-                pending: { label: "Menunggu Pembayaran", color: "text-amber-700", bgColor: "bg-amber-50/50", dotColor: "bg-amber-500" },
-                overdue: { label: "Jatuh Tempo", color: "text-rose-700", bgColor: "bg-rose-50/50", dotColor: "bg-rose-500" },
-                failed: { label: "Pembayaran Gagal", color: "text-slate-700", bgColor: "bg-slate-50/50", dotColor: "bg-slate-500" },
-              };
-              
-              const config = statusConfig[pay.effectiveStatus as string] || statusConfig.pending;
-
-              return (
-                <div key={pay.id} className={`relative pl-6 border-l-2 pb-2 ${pay.effectiveStatus === 'overdue' ? 'border-rose-200' : 'border-blue-200'}`}>
-                  <div className={`absolute -left-[9px] top-0 h-4 w-4 rounded-full ${config.dotColor} border-2 border-white shadow-sm`} />
-                  <div className="space-y-1">
-                    <p className={`text-sm font-semibold ${config.color}`}>{config.label}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(pay.paymentTime || pay.createdAt).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                    <div className={`${config.bgColor} p-2 rounded text-sm space-y-1 border border-transparent hover:border-muted transition-colors`}>
-                      <p>Paket: <span className="font-medium">{pkg?.nama || "Paket Kursus"}</span></p>
-                      <p>Nominal: <span className="font-medium">Rp {pay.amount.toLocaleString('id-ID')}</span></p>
-                      {pay.notes && <p className="text-xs text-muted-foreground mt-1">{pay.notes}</p>}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Riwayat Status */}
-            {selectedParticipant.statusHistory && selectedParticipant.statusHistory.map((log, idx) => (
-              <div key={idx} className="relative pl-6 border-l-2 border-slate-200 pb-2">
-                <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-slate-400 border-2 border-white shadow-sm" />
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-slate-700">Perubahan Status: {statusLabel(log.status)}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(log.changedAt).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                  <p className="text-sm">Oleh <span className="font-medium">{log.changedBy}</span></p>
-                  {log.reason && (
-                    <p className="text-sm text-muted-foreground mt-1 bg-muted/50 p-2 rounded">
-                      "{log.reason}"
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setIsLogOpen(false)}>Tutup</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  };
-
-  const formFields = (
-    <div className="grid gap-4 py-4">
-      <div className="grid gap-2">
-        <Label htmlFor="name">Nama Lengkap *</Label>
-        <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Masukkan nama lengkap" />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="email">Email *</Label>
-        <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@contoh.com" />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="phone">Telepon</Label>
-        <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="081234567890" />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="address">Alamat</Label>
-        <Textarea id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Masukkan alamat" rows={2} />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="status">Status</Label>
-        <Select value={form.status} onValueChange={(val) => { if (val) setForm({ ...form, status: val as Participant["status"] }); }}>
-          <SelectTrigger><SelectValue>{form.status === "active" ? "Aktif" : form.status === "inactive" ? "Tidak Aktif" : "Lulus"}</SelectValue></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="active">Aktif</SelectItem>
-            <SelectItem value="inactive">Tidak Aktif</SelectItem>
-            <SelectItem value="graduated">Lulus</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {form.status === "inactive" && initialStatus !== "inactive" && (
-        <div className="grid gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-          <Label htmlFor="reason">Alasan Tidak Aktif *</Label>
-          <Textarea 
-            id="reason" 
-            value={form.reason} 
-            onChange={(e) => setForm({ ...form, reason: e.target.value })} 
-            placeholder="Masukkan alasan siswa dinonaktifkan" 
-            rows={2} 
-          />
-        </div>
-      )}
-      <div className="grid gap-2">
-        <Label htmlFor="joinDate">Tanggal Bergabung *</Label>
-        <Input 
-          id="joinDate" 
-          type="date" 
-          value={form.createdAt} 
-          onChange={(e) => setForm({ ...form, createdAt: e.target.value })} 
-        />
-      </div>
-    </div>
-  );
 
   return (
     <RoleGuard allowedRoles={["super_admin", "staff_pembayaran"]}>
@@ -565,11 +603,11 @@ export default function ParticipantsPage() {
                   <DialogTitle>Tambah Siswa Baru</DialogTitle>
                   <DialogDescription>Isi data siswa baru di bawah ini.</DialogDescription>
                 </DialogHeader>
-                {formFields}
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsAddOpen(false)}>Batal</Button>
-                  <Button onClick={handleAdd}>Simpan</Button>
-                </DialogFooter>
+                  <ParticipantForm form={form} setForm={setForm} initialStatus={null} />
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsAddOpen(false)}>Batal</Button>
+                    <Button onClick={handleAdd}>Simpan</Button>
+                  </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
@@ -698,7 +736,7 @@ export default function ParticipantsPage() {
               <DialogTitle>Edit Siswa</DialogTitle>
               <DialogDescription>Perbarui data siswa.</DialogDescription>
             </DialogHeader>
-            {formFields}
+            <ParticipantForm form={form} setForm={setForm} initialStatus={initialStatus} />
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsEditOpen(false)}>Batal</Button>
               <Button onClick={handleEdit}>Simpan Perubahan</Button>
@@ -713,7 +751,13 @@ export default function ParticipantsPage() {
           itemName={itemToDelete?.name || "Siswa ini"}
         />
 
-        <LogDialog />
+        <LogDialog 
+          isOpen={isLogOpen} 
+          onOpenChange={setIsLogOpen} 
+          participant={selectedParticipant} 
+          search={logSearch} 
+          onSearchChange={setLogSearch} 
+        />
       </div>
     </RoleGuard>
   );

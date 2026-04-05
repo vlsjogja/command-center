@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Package } from "@/types";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { usePagination } from "@/hooks/usePagination";
 import { PaginationControls } from "@/components/ui/pagination";
@@ -57,6 +57,7 @@ type PackageForm = {
   nominal: number;
   kelas: string;
   durasi: 1 | 2 | 3;
+  type: "one_time" | "subscription";
   deskripsi: string;
   status: "active" | "inactive";
 };
@@ -66,6 +67,7 @@ const emptyForm: PackageForm = {
   nominal: 0,
   kelas: "",
   durasi: 1,
+  type: "subscription",
   deskripsi: "",
   status: "active",
 };
@@ -194,6 +196,7 @@ export default function PackagesPage() {
       nominal: packageData.nominal,
       kelas: packageData.kelas,
       durasi: packageData.durasi,
+      type: packageData.type,
       deskripsi: packageData.deskripsi ?? "",
       status: packageData.status,
     });
@@ -211,10 +214,13 @@ export default function PackagesPage() {
       <div className="grid gap-2">
         <Label>Nominal (Rp) *</Label>
         <Input 
-          type="number" 
-          value={form.nominal} 
-          onChange={(e) => setForm({ ...form, nominal: Number(e.target.value) })} 
-          placeholder="Contoh: 2500000" 
+          type="text" 
+          value={form.nominal === 0 ? "" : formatNumber(form.nominal)} 
+          onChange={(e) => {
+            const val = e.target.value.replace(/\D/g, "");
+            setForm({ ...form, nominal: val ? Number(val) : 0 });
+          }} 
+          placeholder="Contoh: 2.500.000" 
           onFocus={(e) => e.target.select()}
         />
       </div>
@@ -248,6 +254,20 @@ export default function PackagesPage() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+      <div className="grid gap-2">
+        <Label>Tipe Paket *</Label>
+        <Select value={form.type} onValueChange={(val) => { if (val) setForm({ ...form, type: val as any }); }}>
+          <SelectTrigger>
+            <SelectValue placeholder="Pilih tipe...">
+              {form.type === "subscription" ? "Berlangganan (Subscribe)" : "Sekali Bayar (One-Time)"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="subscription">Berlangganan (Subscribe)</SelectItem>
+            <SelectItem value="one_time">Sekali Bayar (One-Time)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-2">
         <Label>Deskripsi</Label>
@@ -303,7 +323,14 @@ export default function PackagesPage() {
                         <TableCell className="font-medium">{pkg.nama}</TableCell>
                         <TableCell className="font-semibold">{formatCurrency(pkg.nominal)}</TableCell>
                         <TableCell className="text-muted-foreground">{classInfo?.name ?? "—"}</TableCell>
-                        <TableCell className="text-sm">{pkg.durasi} bulan</TableCell>
+                        <TableCell className="text-sm">
+                          <div className="flex flex-col gap-0.5">
+                            <span>{pkg.durasi} bulan</span>
+                            <span className="text-[10px] uppercase font-bold text-muted-foreground/70 tracking-wider">
+                              {pkg.type === "subscription" ? "Subscription" : "One-Time"}
+                            </span>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           {pkg.status === "active" ? (
                             <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-xs">

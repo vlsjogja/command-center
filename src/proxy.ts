@@ -1,19 +1,28 @@
-import { type NextRequest } from 'next/server'
-import { updateSession } from '@/lib/supabase/middleware'
+import { NextResponse, type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
+import { auth } from "@/auth";
 
-export async function proxy(request: NextRequest) {
-  return await updateSession(request)
+export default async function middleware(request: NextRequest) {
+  // 1. Update Supabase session if needed
+  const supabaseResponse = await updateSession(request);
+
+  // 2. Next-Auth Protection
+  const session = await auth();
+  const isLoggedIn = !!session;
+  const isDashboard = request.nextUrl.pathname.startsWith("/dashboard");
+
+  if (isDashboard && !isLoggedIn) {
+    return NextResponse.redirect(new URL("/", request.nextUrl));
+  }
+
+  // Redirect logged-in users away from the login page
+  if (request.nextUrl.pathname === "/" && isLoggedIn) {
+    return NextResponse.redirect(new URL("/dashboard", request.nextUrl));
+  }
+
+  return supabaseResponse;
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
-     */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
-}
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+};

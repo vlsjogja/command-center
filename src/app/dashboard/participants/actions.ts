@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { participants, statusHistory, payments, packages } from "@/db/schema";
+import { participants, statusHistory, payments, packages, activityLogs as activityLogsTable } from "@/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import type { Participant, Role } from "@/types";
 import { revalidatePath } from "next/cache";
@@ -13,6 +13,9 @@ export async function getParticipants() {
       with: {
         statusHistory: {
           orderBy: [desc(statusHistory.changedAt)],
+        },
+        activityLogs: {
+          orderBy: [desc(activityLogsTable.timestamp)],
         },
       },
     });
@@ -36,6 +39,9 @@ export async function getParticipantDetail(id: string) {
             package: true,
           },
           orderBy: [desc(payments.createdAt)],
+        },
+        activityLogs: {
+          orderBy: [desc(activityLogsTable.timestamp)],
         },
       },
     });

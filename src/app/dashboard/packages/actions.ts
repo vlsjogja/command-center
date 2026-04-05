@@ -39,6 +39,7 @@ export async function addPackage(formData: any) {
       durasi: formData.durasi,
       deskripsi: formData.deskripsi || null,
       status: formData.status as any,
+      type: formData.type || "subscription",
     }).returning();
     
     revalidatePath("/dashboard/packages");
@@ -59,6 +60,7 @@ export async function updatePackage(id: string, formData: any) {
         durasi: formData.durasi,
         deskripsi: formData.deskripsi || null,
         status: formData.status as any,
+        type: formData.type,
       })
       .where(eq(packages.id, id))
       .returning();

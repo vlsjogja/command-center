@@ -175,6 +175,10 @@
   html {
     font-family: var(--font-plus-jakarta-sans);
   }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* ═══════════════════ DASHBOARD GLOBAL ═══════════════════ */

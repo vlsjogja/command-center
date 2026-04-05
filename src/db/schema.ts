@@ -42,6 +42,11 @@ export const packageStatusEnum = pgEnum("package_status", [
   "inactive",
 ]);
 
+export const packageTypeEnum = pgEnum("package_type", [
+  "one_time",
+  "subscription",
+]);
+
 export const attendanceStatusEnum = pgEnum("attendance_status", [
   "present",
   "absent",
@@ -111,6 +116,7 @@ export const packages = pgTable("packages", {
   durasi: integer("durasi").notNull(), // 1, 2, or 3 months
   deskripsi: text("deskripsi"),
   status: packageStatusEnum("status").default("active").notNull(),
+  type: packageTypeEnum("type").default("subscription").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -134,12 +140,14 @@ export const payments = pgTable("payments", {
 
 export const teachers = pgTable("teachers", {
   id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),
   assignedClasses: text("assigned_classes").notNull(),
   schedule: text("schedule").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
 
 export const attendanceRecords = pgTable("attendance_records", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -171,6 +179,17 @@ export const messageTemplates = pgTable("message_templates", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const activityLogs = pgTable("activity_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  action: text("action").notNull(), // e.g., 'payment_success', 'class_assign'
+  targetType: text("target_type").notNull(), // e.g., 'participant', 'payment', 'package'
+  targetId: uuid("target_id").notNull(),
+  targetName: text("target_name").notNull(),
+  performedBy: text("performed_by").notNull(), // User Name
+  details: text("details").notNull(),
+  timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ════════════════ RELATIONS ════════════════
 
 export const usersRelations = relations(users, ({ one }) => ({
@@ -185,6 +204,14 @@ export const participantsRelations = relations(participants, ({ many }) => ({
   classes: many(participantClasses),
   payments: many(payments),
   attendance: many(studentAttendance),
+  activityLogs: many(activityLogs),
+}));
+
+export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
+  participant: one(participants, {
+    fields: [activityLogs.targetId],
+    references: [participants.id],
+  }),
 }));
 
 export const statusHistoryRelations = relations(statusHistory, ({ one }) => ({
@@ -229,9 +256,14 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
   }),
 }));
 
-export const teachersRelations = relations(teachers, ({ many }) => ({
-  userAccounts: many(users),
+export const teachersRelations = relations(teachers, ({ one, many }) => ({
+  user: one(users, {
+    fields: [teachers.userId],
+    references: [users.id],
+  }),
+  userAccounts: many(users), // existing
 }));
+
 
 export const attendanceRecordsRelations = relations(attendanceRecords, ({ many }) => ({
   studentAttendance: many(studentAttendance),

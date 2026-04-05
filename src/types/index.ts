@@ -26,6 +26,8 @@ export interface Participant {
   createdAt: string;
   createdBy?: string;
   statusHistory?: StatusLog[];
+  activityLogs?: ActivityLog[];
+  payments?: Payment[];
 }
 
 export interface ClassPackage {
@@ -69,6 +71,7 @@ export interface Package {
   nominal: number;
   kelas: string;
   durasi: 1 | 2 | 3;
+  type: "one_time" | "subscription";
   deskripsi?: string;
   status: PackageStatus;
   createdAt: string;
@@ -76,12 +79,15 @@ export interface Package {
 
 export interface Teacher {
   id: string;
+  userId?: string | null;
+  user?: User;
   name: string;
   phone: string;
   assignedClasses: string; // "Nama kelas yang diampu"
   schedule: string;        // "Jadwal kelas"
   createdAt: string;
 }
+
 
 export interface AttendanceRecord {
   id: string;

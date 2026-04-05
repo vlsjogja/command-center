@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Save, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getTemplates, updateTemplate } from "./actions";
+import { getTemplates, upsertTemplate } from "./actions";
 
 export default function MessageTemplatesPage() {
   const { user, hasAccess } = useAuth();
@@ -54,18 +54,25 @@ export default function MessageTemplatesPage() {
   }
 
   const handleSave = async () => {
-    const toUpdate = Object.entries(templates).filter(([_, val]) => val.id);
-    if (toUpdate.length === 0) {
-      toast.error("Tidak ada template yang terhubung ke database untuk disimpan.");
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const promises = toUpdate.map(([_, val]) => updateTemplate(val.id, val.content));
-      await Promise.all(promises);
+      const promises = Object.entries(templates).map(([key, val]) => upsertTemplate(key, val.content));
+      const results = await Promise.all(promises);
+      
+      // Sinkronkan state dengan data terbaru dari database (terutama ID untuk template baru)
+      setTemplates(prev => {
+        const next = { ...prev };
+        results.forEach(res => {
+          if (res.data) {
+            next[res.data.key] = { id: res.data.id, content: res.data.content };
+          }
+        });
+        return next;
+      });
+
       toast.success("Template pesan berhasil disimpan");
     } catch (error) {
+      console.error(error);
       toast.error("Gagal menyimpan template");
     } finally {
       setIsSaving(false);

@@ -6,15 +6,7 @@ import { eq, or, ilike, sql } from "drizzle-orm";
 import type { User, Role } from "@/types";
 import { revalidatePath } from "next/cache";
 
-// Simple password hash (matches seed.ts logic)
-// For production, use bcrypt/argon2
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+import { hashPassword } from "@/app/auth-actions";
 
 export async function getUsers() {
   try {

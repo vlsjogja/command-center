@@ -47,9 +47,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Teacher, ClassPackage } from "@/types";
-import { getTeachers, createTeacher, updateTeacher, deleteTeacher } from "./actions";
-import { getPackages } from "../packages/actions";
+import type { Teacher, ClassPackage, User } from "@/types";
+import { getTeachers, createTeacher, updateTeacher, deleteTeacher, getTeacherAccounts } from "./actions";
+import { getClassPackages } from "../packages/actions";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
@@ -80,14 +80,16 @@ const defaultSchedule: ScheduleEntry[] = DAYS.map((day) => ({
   enabled: false,
 }));
 
-type FormData = Omit<Teacher, "id" | "createdAt">;
+type FormData = Omit<Teacher, "id" | "createdAt"> & { userId?: string | null };
 
 const emptyForm: FormData = {
+  userId: null,
   name: "",
   phone: "",
   assignedClasses: "",
   schedule: "",
 };
+
 
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -99,6 +101,11 @@ export default function TeachersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [teacherAccounts, setTeacherAccounts] = useState<User[]>([]);
+  const [isAccountSelectOpen, setIsAccountSelectOpen] = useState(false);
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountVisibleCount, setAccountVisibleCount] = useState(5);
+
 
   // Delete Confirm State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -118,11 +125,17 @@ export default function TeachersPage() {
 
   async function loadData() {
     setIsLoading(true);
-    const [tRes, pRes] = await Promise.all([getTeachers(), getPackages()]);
+    const [tRes, pRes, aRes] = await Promise.all([
+      getTeachers(), 
+      getClassPackages(),
+      getTeacherAccounts()
+    ]);
     if (tRes.data) setTeachers(tRes.data as any);
     if (pRes.data) setPackages(pRes.data as any);
+    if (aRes.data) setTeacherAccounts(aRes.data as any);
     setIsLoading(false);
   }
+
 
   useEffect(() => {
     loadData();
@@ -263,16 +276,21 @@ export default function TeachersPage() {
     setTempSchedule(next);
   };
 
-  const filteredClassPackages = packages.filter(pkg => 
-    pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-    !assignments.some(a => a.className === pkg.name)
-  );
+  const filteredClassPackages = (packages || []).filter(pkg => {
+    const pkgName = pkg?.name || "";
+    return pkgName.toLowerCase().includes(searchQuery.toLowerCase()) && 
+    !assignments.some(a => a.className === pkgName);
+  });
 
   const filtered = (teachers as any[]).filter((t: any) => {
+    const teacherName = t?.name || "";
+    const assignedClasses = t?.assignedClasses || "";
+    const phone = t?.phone || "";
+    
     return (
-      (t.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (t.assignedClasses?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (t.phone || "").includes(search)
+      teacherName.toLowerCase().includes(search.toLowerCase()) ||
+      assignedClasses.toLowerCase().includes(search.toLowerCase()) ||
+      phone.includes(search)
     );
   });
   
@@ -338,7 +356,8 @@ export default function TeachersPage() {
   function openEdit(t: Teacher) {
     setEditingId(t.id);
     setForm({
-      name: t.name,
+      userId: t.userId,
+      name: t.user?.name || t.name,
       phone: t.phone,
       assignedClasses: t.assignedClasses,
       schedule: t.schedule,
@@ -347,17 +366,31 @@ export default function TeachersPage() {
     setIsEditOpen(true);
   }
 
+
   const formFields = (
     <div className="grid gap-4 py-4">
       <div className="grid gap-2">
-        <Label htmlFor="name">Nama Pengajar *</Label>
-        <Input
-          id="name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder="Masukkan nama pengajar"
-        />
+        <Label>Akun Pengajar (Role: Teacher) *</Label>
+        <Button 
+          variant="outline" 
+          className="w-full justify-start font-normal h-10 border-input shadow-none hover:bg-muted/50"
+          onClick={() => setIsAccountSelectOpen(true)}
+        >
+          {form.userId ? (
+            <span className="truncate text-foreground font-medium">
+              {teacherAccounts.find(a => a.id === form.userId)?.name || form.name}
+            </span>
+          ) : form.name ? (
+            <span className="truncate text-foreground font-medium">{form.name}</span>
+          ) : (
+            <span className="text-muted-foreground">Pilih akun pengajar dari halaman Akun...</span>
+          )}
+        </Button>
+        <p className="text-[10px] text-muted-foreground italic">
+          * Nama pengajar tersinkronisasi dengan nama di Akun
+        </p>
       </div>
+
       <div className="grid gap-2">
         <Label htmlFor="phone">No HP *</Label>
         <Input
@@ -534,10 +567,13 @@ export default function TeachersPage() {
                       <TableRow key={t.id} className="hover:bg-primary/[0.02] transition-colors border-b border-muted/50 group align-top">
                         <TableCell className="px-4 py-6 align-top w-px whitespace-nowrap">
                           <div className="flex flex-col gap-1 pt-1 max-w-[180px]">
-                            <span className="font-bold text-foreground truncate leading-tight">{t.name}</span>
+                            <span className="font-bold text-foreground truncate leading-tight">
+                              {(t as any).user?.name || t.name}
+                            </span>
                             <span className="text-xs text-muted-foreground font-medium">{t.phone}</span>
                           </div>
                         </TableCell>
+
                         <TableCell className="px-4 py-6 align-top font-bold text-foreground">
                           <div className="flex flex-col gap-6">
                             {teacherAssignments.length > 0 ? (
@@ -585,7 +621,8 @@ export default function TeachersPage() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all"
-                              onClick={() => initiateDelete(t.id, t.name)}
+                              onClick={() => initiateDelete(t.id, (t as any).user?.name || t.name)}
+
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -610,6 +647,113 @@ export default function TeachersPage() {
             </div>
           )}
         </Card>
+
+        {/* Account Selection Dialog */}
+        <Dialog open={isAccountSelectOpen} onOpenChange={setIsAccountSelectOpen}>
+          <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col rounded-2xl">
+            <DialogHeader className="p-6 pb-2">
+              <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                <UserCheck className="h-6 w-6 text-primary" /> Pilih Akun Pengajar
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                Cari dan pilih akun dengan role teacher untuk profil pengajar ini. 
+                Data nama akan disinkronkan secara otomatis.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="p-6 space-y-5 flex flex-col overflow-hidden">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                <Input 
+                  placeholder="Cari nama atau email akun..." 
+                  className="pl-10 h-11 border-border/60 bg-muted/20 focus-visible:ring-primary/20" 
+                  value={accountSearch} 
+                  onChange={(e) => {
+                    setAccountSearch(e.target.value);
+                    setAccountVisibleCount(5);
+                  }} 
+                />
+              </div>
+              
+              <div className="flex-grow overflow-y-auto space-y-2 pr-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                {(() => {
+                  const filteredAccounts = teacherAccounts.filter(a => 
+                    a.name.toLowerCase().includes(accountSearch.toLowerCase()) || 
+                    a.email.toLowerCase().includes(accountSearch.toLowerCase())
+                  );
+                  const visibleAccounts = filteredAccounts.slice(0, accountVisibleCount);
+                  
+                  if (visibleAccounts.length === 0) {
+                    return (
+                      <div className="text-center py-16 px-4 border-2 border-dashed rounded-2xl border-muted/50 bg-muted/5">
+                        <div className="bg-muted w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <Search className="h-6 w-6 text-muted-foreground/40" />
+                        </div>
+                        <p className="text-muted-foreground font-medium text-sm">Tidak ada akun ditemukan.</p>
+                        <p className="text-xs text-muted-foreground/60 mt-1.5 leading-relaxed">
+                          Pastikan akun sudah terdaftar di halaman <span className="font-bold text-primary">Akun</span><br/>
+                          dan memiliki role <span className="font-bold text-primary">Teacher</span>.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid gap-2 pb-2">
+                      {visibleAccounts.map((a) => {
+                        const isSelected = form.userId === a.id;
+                        
+                        return (
+                          <div 
+                            key={a.id} 
+                            onClick={() => {
+                              setForm({ ...form, userId: a.id, name: a.name });
+                              setIsAccountSelectOpen(false);
+                            }}
+                            className={`
+                              group flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer
+                              ${isSelected 
+                                ? "border-primary bg-primary/[0.03] ring-1 ring-primary/20" 
+                                : "border-border/40 hover:border-primary/30 hover:bg-muted/30"}
+                            `}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={`
+                                w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors
+                                ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted group-hover:bg-primary/10 group-hover:text-primary"}
+                              `}>
+                                {a.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="font-bold text-sm text-foreground tracking-tight">{a.name}</p>
+                                <p className="text-[11px] text-muted-foreground font-medium">{a.email}</p>
+                              </div>
+                            </div>
+                            {isSelected ? (
+                              <Badge className="bg-primary text-primary-foreground font-bold text-[9px] px-2 rounded-full h-5">TERPILIH</Badge>
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                            )}
+                          </div>
+                        );
+                      })}
+                      
+                      {filteredAccounts.length > accountVisibleCount && (
+                        <Button 
+                          variant="ghost"
+                          className="w-full py-6 text-xs text-primary font-bold hover:bg-primary/5 mt-2 rounded-xl transition-all"
+                          onClick={() => setAccountVisibleCount(prev => prev + 10)}
+                        >
+                          Tampilkan Lebih Banyak (+10 Akun)
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
 
         {/* Edit Teacher Dialog */}
         <Dialog open={isEditOpen} onOpenChange={(v) => { setIsEditOpen(v); if (!v) { setEditingId(null); setForm(emptyForm); setAssignments([]); } }}>

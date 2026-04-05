@@ -16,12 +16,15 @@ export async function getTemplates() {
   }
 }
 
-export async function updateTemplate(id: string, content: string) {
+export async function upsertTemplate(key: string, content: string) {
   try {
     const [template] = await db
-      .update(messageTemplates)
-      .set({ content, updatedAt: new Date() })
-      .where(eq(messageTemplates.id, id))
+      .insert(messageTemplates)
+      .values({ key, content, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: messageTemplates.key,
+        set: { content, updatedAt: new Date() },
+      })
       .returning();
     revalidatePath("/dashboard/message-templates");
     return { data: template, error: null };
