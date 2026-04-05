@@ -19,8 +19,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-import { dummyUsers } from "@/lib/dummy-data";
-
+import { verifyLogin } from "@/app/auth-actions";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,11 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Dummy auth: password123 for all users
-    const found = dummyUsers.find((u) => u.email === email);
-    if (found && password === "password123") {
-      setUser(found);
-      localStorage.setItem("auth_user", JSON.stringify(found));
+    const res = await verifyLogin(email, password);
+    if (res.success && res.user) {
+      setUser(res.user);
+      localStorage.setItem("auth_user", JSON.stringify(res.user));
       return true;
     }
     return false;
