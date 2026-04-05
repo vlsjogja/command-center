@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 // Connection string from Supabase project settings
 // Dashboard → Settings → Database → Connection string (URI)
-const connectionString = process.env.DATABASE_URL;
+const connectionString = process.env.COMMAND_CENTER_POSTGRES_URL;
 
 if (!connectionString) {
   console.warn(
