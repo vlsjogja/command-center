@@ -9,6 +9,7 @@ import {
   pgEnum,
   jsonb,
   numeric,
+  AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -60,7 +61,7 @@ export const users = pgTable("users", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull(),
-  teacherId: uuid("teacher_id").references(() => teachers.id, { onDelete: "set null" }),
+  teacherId: uuid("teacher_id").references((): AnyPgColumn => teachers.id, { onDelete: "set null" }),
   avatar: text("avatar"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -140,7 +141,7 @@ export const payments = pgTable("payments", {
 
 export const teachers = pgTable("teachers", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  userId: uuid("user_id").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),
   assignedClasses: text("assigned_classes").notNull(),
