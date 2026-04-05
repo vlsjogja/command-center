@@ -4,12 +4,12 @@ import * as schema from "./schema";
 
 // Connection string from Supabase project settings
 // Dashboard → Settings → Database → Connection string (URI)
-const connectionString = process.env.COMMAND_CENTER_POSTGRES_URL;
+const connectionString = process.env.COMMAND_CENTER_POSTGRES_URL_NON_POOLING || process.env.COMMAND_CENTER_POSTGRES_URL;
 
 if (!connectionString) {
   console.warn(
     "⚠️  DATABASE_URL is not set. Database queries will fail.\n" +
-    "   Set DATABASE_URL in your .env.local file or Vercel environment variables.\n" +
+    "   Set COMMAND_CENTER_POSTGRES_URL_NON_POOLING in your .env.local file or Vercel environment variables.\n" +
     "   Get it from: Supabase Dashboard → Settings → Database → Connection string"
   );
 }

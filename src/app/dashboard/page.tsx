@@ -51,6 +51,17 @@ export default function DashboardPage() {
     );
   }
 
+  if (!data) {
+    return (
+      <div className="h-[60vh] flex items-center justify-center text-center">
+        <div>
+          <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto mb-4 opacity-50" />
+          <p className="text-lg font-medium text-muted-foreground">Belum ada data.</p>
+        </div>
+      </div>
+    );
+  }
+
   const isTeacher = user?.role === "teacher";
   const teacherData = isTeacher && data?.teacherInfo;
 

@@ -7,6 +7,6 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.COMMAND_CENTER_POSTGRES_URL!,
+    url: process.env.COMMAND_CENTER_POSTGRES_URL_NON_POOLING || process.env.COMMAND_CENTER_POSTGRES_URL!,
   },
 });

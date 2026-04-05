@@ -65,7 +65,7 @@ const emptyForm: FormData = {
   email: "",
   role: "staff_pembayaran",
   avatar: "",
-  password: "password123",
+  password: "",
 };
 
 export default function AccountsPage() {
@@ -197,7 +197,7 @@ export default function AccountsPage() {
       email: u.email,
       role: u.role,
       avatar: u.avatar || "",
-      password: "password123", // Dummy password for editing
+      password: "",
     });
     setIsEditOpen(true);
   }
@@ -237,7 +237,7 @@ export default function AccountsPage() {
       </div>
       <div className="grid gap-2">
         <Label htmlFor="password" className="flex items-center gap-2">
-          <Key className="h-4 w-4 text-muted-foreground" /> Kata Sandi
+          <Key className="h-4 w-4 text-muted-foreground" /> Kata Sandi {!editingId && "*"}
         </Label>
         <Input
           id="password"
@@ -246,9 +246,12 @@ export default function AccountsPage() {
           onChange={(e) => setForm({ ...form, password: e.target.value })}
           placeholder="••••••••"
           className="rounded-lg h-10"
+          autoComplete="new-password"
         />
         <p className="text-[11px] text-muted-foreground">
-          Bawaan: password123. Biarkan jika tidak ingin diubah.
+          {editingId 
+            ? "Biarkan kosong jika tidak ingin mengubah kata sandi." 
+            : "Kata sandi harus aman. Direkomendasikan menggunakan fitur 'Generate Password' dari Google atau browser Anda."}
         </p>
       </div>
       <div className="grid gap-2">
