@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import type { Payment, AttendanceRecord, ActivityLog } from "@/types";
+import { useState, useMemo, useEffect } from "react";
 import { RoleGuard } from "@/components/auth/role-guard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -33,20 +32,26 @@ import {
   CalendarDays,
   Filter,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
-import {
-  dummyParticipants,
-  dummyPayments,
-  dummyPackages,
-  dummyClassPackages,
-  dummyParticipantClasses,
-  dummyTeachers,
-  dummyUsers,
-  dummyAttendanceHistory,
-  dummyActivityLogs,
-} from "@/lib/dummy-data";
+import { 
+  getDatabaseStats, 
+  getBackupData, 
+  getTablePreview 
+} from "./actions";
+import { 
+  type User, 
+  type Participant, 
+  type ClassPackage, 
+  type ParticipantClass, 
+  type Payment, 
+  type Package, 
+  type Teacher, 
+  type AttendanceRecord, 
+  type ActivityLog 
+} from "@/types";
 
 // ─── Schema definitions for the ER diagram ───
 type ColumnDef = {
@@ -64,148 +69,173 @@ type TableDef = {
   color: string;
 };
 
-const dbTables: TableDef[] = [
+// ─── Table metadata ───
+const dbTablesMeta: Omit<TableDef, 'rowCount'>[] = [
   {
     name: "users",
     displayName: "Users",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "name", type: "string" },
-      { name: "email", type: "string" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "name", type: "text" },
+      { name: "email", type: "varchar(255)" },
+      { name: "passwordHash", type: "text" },
       { name: "role", type: "enum" },
-      { name: "teacherId", type: "string?", fk: "teachers.id" },
+      { name: "teacherId", type: "uuid?", fk: "teachers.id" },
+      { name: "avatar", type: "text?" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: dummyUsers.length,
     color: "violet",
   },
   {
     name: "participants",
     displayName: "Peserta Didik",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "name", type: "string" },
-      { name: "email", type: "string" },
-      { name: "phone", type: "string" },
-      { name: "address", type: "string" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "name", type: "text" },
+      { name: "email", type: "varchar(255)" },
+      { name: "phone", type: "varchar(20)" },
+      { name: "address", type: "text" },
       { name: "status", type: "enum" },
-      { name: "createdAt", type: "datetime" },
+      { name: "createdAt", type: "timestamp" },
+      { name: "createdBy", type: "text?" },
     ],
-    rowCount: dummyParticipants.length,
     color: "emerald",
+  },
+  {
+    name: "status_history",
+    displayName: "Riwayat Status",
+    columns: [
+      { name: "id", type: "uuid", pk: true },
+      { name: "participantId", type: "uuid", fk: "participants.id" },
+      { name: "status", type: "enum" },
+      { name: "changedAt", type: "timestamp" },
+      { name: "changedBy", type: "text" },
+      { name: "reason", type: "text?" },
+    ],
+    color: "slate",
   },
   {
     name: "class_packages",
     displayName: "Kelas",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "name", type: "string" },
-      { name: "description", type: "string" },
-      { name: "learningDuration", type: "string" },
-      { name: "createdAt", type: "datetime" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "name", type: "text" },
+      { name: "description", type: "text?" },
+      { name: "learningDuration", type: "text" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: dummyClassPackages.length,
     color: "blue",
   },
   {
     name: "participant_classes",
     displayName: "Enrollments",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "participantId", type: "string", fk: "participants.id" },
-      { name: "classPackageId", type: "string", fk: "class_packages.id" },
-      { name: "enrolledAt", type: "datetime" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "participantId", type: "uuid", fk: "participants.id" },
+      { name: "classPackageId", type: "uuid", fk: "class_packages.id" },
+      { name: "enrolledAt", type: "timestamp" },
     ],
-    rowCount: dummyParticipantClasses.length,
     color: "cyan",
   },
   {
     name: "payments",
     displayName: "Pembayaran",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "participantId", type: "string", fk: "participants.id" },
-      { name: "classPackageId", type: "string", fk: "packages.id" },
-      { name: "amount", type: "number" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "participantId", type: "uuid", fk: "participants.id" },
+      { name: "classPackageId", type: "uuid", fk: "packages.id" },
+      { name: "amount", type: "integer" },
       { name: "paymentMethod", type: "enum" },
-      { name: "paymentTime", type: "datetime?" },
-      { name: "billingTime", type: "datetime" },
+      { name: "paymentTime", type: "timestamp?" },
+      { name: "billingTime", type: "timestamp" },
       { name: "paymentStatus", type: "enum" },
-      { name: "createdAt", type: "datetime" },
+      { name: "participantStatus", type: "enum" },
+      { name: "notes", type: "text?" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: dummyPayments.length,
     color: "amber",
   },
   {
     name: "packages",
     displayName: "Paket Pembayaran",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "nama", type: "string" },
-      { name: "nominal", type: "number" },
-      { name: "kelas", type: "string", fk: "class_packages.id" },
-      { name: "durasi", type: "number" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "nama", type: "text" },
+      { name: "nominal", type: "integer" },
+      { name: "kelas", type: "uuid", fk: "class_packages.id" },
+      { name: "durasi", type: "integer" },
+      { name: "deskripsi", type: "text?" },
       { name: "status", type: "enum" },
-      { name: "createdAt", type: "datetime" },
+      { name: "type", type: "enum" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: dummyPackages.length,
     color: "rose",
   },
   {
     name: "teachers",
     displayName: "Pengajar",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "name", type: "string" },
-      { name: "phone", type: "string" },
-      { name: "assignedClasses", type: "string" },
-      { name: "schedule", type: "string" },
-      { name: "createdAt", type: "datetime" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "userId", type: "uuid?", fk: "users.id" },
+      { name: "name", type: "text" },
+      { name: "phone", type: "varchar(20)" },
+      { name: "assignedClasses", type: "text" },
+      { name: "schedule", type: "text" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: dummyTeachers.length,
     color: "orange",
   },
   {
-    name: "attendance",
-    displayName: "Presensi",
+    name: "attendance_records",
+    displayName: "Presensi (Master)",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "date", type: "datetime" },
-      { name: "className", type: "string" },
-      { name: "teacherName", type: "string" },
-      { name: "totalParticipants", type: "number" },
-      { name: "presentCount", type: "number" },
-      { name: "studentAttendance", type: "json[]" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "date", type: "timestamp" },
+      { name: "className", type: "text" },
+      { name: "teacherName", type: "text" },
+      { name: "totalParticipants", type: "integer" },
+      { name: "presentCount", type: "integer" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: dummyAttendanceHistory.length,
     color: "teal",
+  },
+  {
+    name: "student_attendance",
+    displayName: "Presensi Peserta",
+    columns: [
+      { name: "id", type: "uuid", pk: true },
+      { name: "attendanceRecordId", type: "uuid", fk: "attendance_records.id" },
+      { name: "studentId", type: "uuid", fk: "participants.id" },
+      { name: "studentName", type: "text" },
+      { name: "status", type: "enum" },
+    ],
+    color: "emerald",
   },
   {
     name: "activity_logs",
     displayName: "Audit Log / Aktivitas",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "action", type: "enum" },
-      { name: "targetType", type: "string" },
-      { name: "targetId", type: "string" },
-      { name: "targetName", type: "string" },
-      { name: "performedBy", type: "string", fk: "users.id" },
-      { name: "details", type: "string" },
-      { name: "timestamp", type: "datetime" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "action", type: "text" },
+      { name: "targetType", type: "text" },
+      { name: "targetId", type: "uuid" },
+      { name: "targetName", type: "text" },
+      { name: "performedBy", type: "text" },
+      { name: "details", type: "text" },
+      { name: "timestamp", type: "timestamp" },
     ],
-    rowCount: dummyActivityLogs.length,
     color: "rose",
   },
   {
     name: "message_templates",
     displayName: "Template Pesan",
     columns: [
-      { name: "id", type: "string", pk: true },
-      { name: "key", type: "string (unique)" },
-      { name: "content", type: "string" },
-      { name: "updatedAt", type: "datetime" },
-      { name: "createdAt", type: "datetime" },
+      { name: "id", type: "uuid", pk: true },
+      { name: "key", type: "varchar(100)" },
+      { name: "content", type: "text" },
+      { name: "updatedAt", type: "timestamp" },
+      { name: "createdAt", type: "timestamp" },
     ],
-    rowCount: 3, // Initial default templates
     color: "indigo",
   },
 ];
@@ -226,7 +256,11 @@ const relations: Relation[] = [
   { from: "participant_classes", fromCol: "classPackageId", to: "class_packages", toCol: "id", label: "enrolled in" },
   { from: "packages", fromCol: "kelas", to: "class_packages", toCol: "id", label: "linked to" },
   { from: "users", fromCol: "teacherId", to: "teachers", toCol: "id", label: "profile of" },
-  { from: "activity_logs", fromCol: "performedBy", to: "users", toCol: "id", label: "done by" },
+  { from: "teachers", fromCol: "userId", to: "users", toCol: "id", label: "account for" },
+  { from: "activity_logs", fromCol: "targetId", to: "participants", toCol: "id", label: "related to" },
+  { from: "status_history", fromCol: "participantId", to: "participants", toCol: "id", label: "history for" },
+  { from: "student_attendance", fromCol: "attendanceRecordId", to: "attendance_records", toCol: "id", label: "part of" },
+  { from: "student_attendance", fromCol: "studentId", to: "participants", toCol: "id", label: "attendance for" },
 ];
 
 // ─── Backup sources ───
@@ -247,9 +281,9 @@ const backupSources: BackupSource[] = [
     dateField: "createdAt",
   },
   {
-    id: "attendance",
+    id: "attendance_records",
     label: "Presensi",
-    description: "Catatan kehadiran kelas",
+    description: "Catatan kehadiran kelas (master)",
     icon: <CalendarDays className="h-5 w-5" />,
     dateField: "date",
   },
@@ -290,67 +324,88 @@ export default function DatabasePage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [filterStart, setFilterStart] = useState("");
-  const [filterEnd, setFilterEnd] = useState("");
+  const [filterRange, setFilterRange] = useState({ start: "", end: "" });
+  
+  const [dbStats, setDbStats] = useState<Record<string, number>>({});
+  const [backupData, setBackupData] = useState<any[]>([]);
+  const [tablePreviewData, setTablePreviewData] = useState<Record<string, unknown>[]>([]);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
+  const [isBackupLoading, setIsBackupLoading] = useState(false);
 
-  // Get data for selected table preview
-  const tableDataMap: Record<string, { data: Record<string, unknown>[]; headers: string[] }> = {
-    users: { data: dummyUsers as unknown as Record<string, unknown>[], headers: ["id", "name", "email", "role"] },
-    participants: { data: dummyParticipants as unknown as Record<string, unknown>[], headers: ["id", "name", "email", "phone", "status"] },
-    class_packages: { data: dummyClassPackages as unknown as Record<string, unknown>[], headers: ["id", "name", "learningDuration"] },
-    participant_classes: { data: dummyParticipantClasses as unknown as Record<string, unknown>[], headers: ["id", "participantId", "classPackageId", "enrolledAt"] },
-    payments: { data: dummyPayments as unknown as Record<string, unknown>[], headers: ["id", "participantId", "amount", "paymentStatus", "createdAt"] },
-    packages: { data: dummyPackages as unknown as Record<string, unknown>[], headers: ["id", "nama", "nominal", "kelas", "status"] },
-    teachers: { data: dummyTeachers as unknown as Record<string, unknown>[], headers: ["id", "name", "phone", "assignedClasses"] },
-    attendance: { data: dummyAttendanceHistory as unknown as Record<string, unknown>[], headers: ["id", "date", "className", "teacherName", "presentCount"] },
-    activity_logs: { data: dummyActivityLogs as unknown as Record<string, unknown>[], headers: ["id", "action", "targetName", "performedBy", "timestamp"] },
-    message_templates: { 
-      data: [
-        { id: "1", key: "paymentReminder", content: "Halo {{nama_siswa}}, jangan lupa..." },
-        { id: "2", key: "overdueReminder", content: "Peringatan: Tagihan Anda..." },
-        { id: "3", key: "teachingReminder", content: "Halo {{nama_pengajar}}, jadwal..." },
-      ] as Record<string, unknown>[], 
-      headers: ["id", "key", "content"] 
-    },
-  };
+  // Fetch Stats and Default Backup on mount
+  useEffect(() => {
+    async function initData() {
+      setIsStatsLoading(true);
+      const { data, error } = await getDatabaseStats();
+      if (data) setDbStats(data);
+      if (error) toast.error("Gagal mengambil statistik DB");
+      setIsStatsLoading(false);
+    }
+    initData();
+  }, []);
 
-  // ─── Backup logic ───
+  // Fetch Backup Data when source or filters change
+  useEffect(() => {
+    async function fetchBackup() {
+      setIsBackupLoading(true);
+      const { data, error } = await getBackupData(backupSource);
+      if (data) setBackupData(data);
+      if (error) toast.error(`Gagal mengambil data backup: ${backupSource}`);
+      setIsBackupLoading(false);
+    }
+    fetchBackup();
+  }, [backupSource]);
+
+  // Fetch Table Preview when selected table changes
+  useEffect(() => {
+    async function fetchPreview() {
+      if (!selectedTable) {
+        setTablePreviewData([]);
+        return;
+      };
+      const { data, error } = await getTablePreview(selectedTable);
+      if (data) setTablePreviewData(data);
+      if (error) toast.error(`Gagal mengambil preview tabel: ${selectedTable}`);
+    }
+    fetchPreview();
+  }, [selectedTable]);
+
+  // Computed dbTables with row counts
+  const dbTables = useMemo(() => {
+    return dbTablesMeta.map(table => ({
+      ...table,
+      rowCount: dbStats[table.name] ?? 0
+    }));
+  }, [dbStats]);
+
+  // Filtered data for backup
   const filteredBackupData = useMemo(() => {
-    function getDateStr(item: Payment | AttendanceRecord | ActivityLog): string {
-      if ("createdAt" in item && backupSource === "payments") return (item as Payment).createdAt;
-      if ("date" in item && backupSource === "attendance") return (item as AttendanceRecord).date;
-      if ("timestamp" in item && backupSource === "activity_logs") return (item as ActivityLog).timestamp;
+    function getDateStr(item: any): string {
+      if ("createdAt" in item && backupSource === "payments") return item.createdAt;
+      if ("date" in item && backupSource === "attendance_records") return item.date;
+      if ("timestamp" in item && backupSource === "activity_logs") return item.timestamp;
       return "";
     }
 
-    const source: (Payment | AttendanceRecord | ActivityLog)[] =
-      backupSource === "payments" 
-        ? dummyPayments 
-        : backupSource === "attendance" 
-          ? dummyAttendanceHistory 
-          : dummyActivityLogs;
-
-    return source.filter((item) => {
+    return backupData.filter((item) => {
       const dateStr = getDateStr(item);
-      if (!dateStr) return false;
+      if (!dateStr) return true;
       const itemDate = new Date(dateStr);
-
-      if (filterMode === "month" && filterMonth) {
-        const [year, month] = filterMonth.split("-").map(Number);
-        return itemDate.getFullYear() === year && itemDate.getMonth() + 1 === month;
-      }
-
-      if (filterMode === "range") {
-        const start = filterStart ? new Date(filterStart) : null;
-        const end = filterEnd ? new Date(filterEnd + "T23:59:59") : null;
+      
+      if (filterMode === "month") {
+        return (
+          itemDate.getFullYear().toString() === filterMonth.split("-")[0] &&
+          (itemDate.getMonth() + 1).toString().padStart(2, "0") === filterMonth.split("-")[1]
+        );
+      } else {
+        const start = filterRange.start ? new Date(filterRange.start) : null;
+        const end = filterRange.end ? new Date(filterRange.end + "T23:59:59") : null;
         if (start && itemDate < start) return false;
         if (end && itemDate > end) return false;
         return true;
       }
-
-      return true;
     });
-  }, [backupSource, filterMode, filterMonth, filterStart, filterEnd]);
+  }, [backupData, backupSource, filterMode, filterMonth, filterRange]);
 
   function handleExportCsv() {
     if (filteredBackupData.length === 0) {
@@ -358,41 +413,49 @@ export default function DatabasePage() {
       return;
     }
 
-    // Flatten attendance student data for CSV
     let exportData: Record<string, unknown>[];
-    if (backupSource === "attendance") {
+    if (backupSource === "attendance_records") {
       exportData = [];
-      for (const record of filteredBackupData as unknown as typeof dummyAttendanceHistory) {
+      const records = filteredBackupData as unknown as (AttendanceRecord & { studentAttendance: any[] })[];
+      for (const record of records) {
         if (record.studentAttendance && record.studentAttendance.length > 0) {
-          for (const student of record.studentAttendance) {
+          for (const sa of record.studentAttendance) {
             exportData.push({
-              id: record.id,
+              record_id: record.id,
               date: record.date,
               className: record.className,
               teacherName: record.teacherName,
-              totalParticipants: record.totalParticipants,
-              presentCount: record.presentCount,
-              studentId: student.studentId,
-              studentName: student.studentName,
-              attendanceStatus: student.status,
+              studentId: sa.studentId,
+              studentName: sa.studentName || sa.student?.name,
+              status: sa.status,
             });
           }
         } else {
           exportData.push({
-            id: record.id,
+            record_id: record.id,
             date: record.date,
             className: record.className,
             teacherName: record.teacherName,
-            totalParticipants: record.totalParticipants,
-            presentCount: record.presentCount,
-            studentId: "",
-            studentName: "",
-            attendanceStatus: "",
+            studentId: "N/A",
+            studentName: "N/A",
+            status: "No Students Recorded",
           });
         }
       }
     } else {
-      exportData = filteredBackupData as unknown as Record<string, unknown>[];
+      exportData = filteredBackupData.map(item => {
+        const newItem: any = { ...item };
+        if (newItem.participant) {
+            newItem.participantName = newItem.participant.name;
+            newItem.participantEmail = newItem.participant.email;
+            delete newItem.participant;
+        }
+        if (newItem.package) {
+            newItem.packageName = newItem.package.nama;
+            delete newItem.package;
+        }
+        return newItem;
+      });
     }
 
     const csv = Papa.unparse(exportData);
@@ -402,11 +465,11 @@ export default function DatabasePage() {
 
     const label = 
       backupSource === "payments" ? "pembayaran" : 
-      backupSource === "attendance" ? "presensi" : "logs";
+      backupSource === "attendance_records" ? "presensi" : "logs";
     const dateLabel =
       filterMode === "month"
         ? filterMonth
-        : `${filterStart || "awal"}_${filterEnd || "akhir"}`;
+        : `${filterRange.start || "awal"}_${filterRange.end || "akhir"}`;
 
     a.href = url;
     a.download = `backup_${label}_${dateLabel}.csv`;
@@ -460,7 +523,7 @@ export default function DatabasePage() {
               <Card className="shadow-sm">
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Tabel</p>
-                  <p className="text-2xl font-bold mt-1">{dbTables.length}</p>
+                  <p className="text-2xl font-bold mt-1">{dbTablesMeta.length}</p>
                 </CardContent>
               </Card>
               <Card className="shadow-sm">
@@ -473,7 +536,7 @@ export default function DatabasePage() {
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Kolom</p>
                   <p className="text-2xl font-bold mt-1">
-                    {dbTables.reduce((a, t) => a + t.columns.length, 0)}
+                    {dbTablesMeta.reduce((a, t) => a + t.columns.length, 0)}
                   </p>
                 </CardContent>
               </Card>
@@ -481,7 +544,7 @@ export default function DatabasePage() {
                 <CardContent className="pt-4 pb-4">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Data</p>
                   <p className="text-2xl font-bold mt-1">
-                    {dbTables.reduce((a, t) => a + t.rowCount, 0)}
+                    {isStatsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : Object.values(dbStats).reduce((a, b) => a + b, 0).toLocaleString()}
                   </p>
                 </CardContent>
               </Card>
@@ -589,14 +652,14 @@ export default function DatabasePage() {
             </Card>
 
             {/* Table data preview */}
-            {selectedTable && tableDataMap[selectedTable] && (
+            {selectedTable && (
               <Card className="shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-base">
-                    Preview: {dbTables.find((t) => t.name === selectedTable)?.displayName}
+                    Preview: {dbTablesMeta.find((t) => t.name === selectedTable)?.displayName}
                   </CardTitle>
                   <CardDescription>
-                    Menampilkan {tableDataMap[selectedTable].data.length} baris (read-only)
+                    Menampilkan data terbaru (read-only)
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -604,7 +667,7 @@ export default function DatabasePage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/50">
-                          {tableDataMap[selectedTable].headers.map((h) => (
+                          {tablePreviewData.length > 0 && Object.keys(tablePreviewData[0]).map((h) => (
                             <TableHead key={h} className="font-semibold text-xs whitespace-nowrap">
                               {h}
                             </TableHead>
@@ -612,23 +675,26 @@ export default function DatabasePage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {tableDataMap[selectedTable].data.slice(0, 10).map((row, idx) => (
-                          <TableRow key={idx} className="hover:bg-muted/30">
-                            {tableDataMap[selectedTable].headers.map((h) => (
-                              <TableCell key={h} className="text-xs font-mono max-w-[200px] truncate">
-                                {String(row[h] ?? "-")}
-                              </TableCell>
-                            ))}
+                        {tablePreviewData.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                              Tidak ada data pratinjau.
+                            </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          tablePreviewData.map((row, idx) => (
+                            <TableRow key={idx} className="hover:bg-muted/30">
+                              {Object.values(row).map((val, i) => (
+                                <TableCell key={i} className="text-xs font-mono max-w-[200px] truncate">
+                                  {val !== null && val !== undefined ? String(val) : "-"}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </div>
-                  {tableDataMap[selectedTable].data.length > 10 && (
-                    <p className="text-xs text-muted-foreground mt-2 text-center">
-                      Menampilkan 10 dari {tableDataMap[selectedTable].data.length} baris
-                    </p>
-                  )}
                 </CardContent>
               </Card>
             )}
@@ -723,8 +789,8 @@ export default function DatabasePage() {
                         <Input
                           id="filterStart"
                           type="date"
-                          value={filterStart}
-                          onChange={(e) => setFilterStart(e.target.value)}
+                          value={filterRange.start}
+                          onChange={(e) => setFilterRange(prev => ({ ...prev, start: e.target.value }))}
                         />
                       </div>
                       <div className="grid gap-2">
@@ -732,8 +798,8 @@ export default function DatabasePage() {
                         <Input
                           id="filterEnd"
                           type="date"
-                          value={filterEnd}
-                          onChange={(e) => setFilterEnd(e.target.value)}
+                          value={filterRange.end}
+                          onChange={(e) => setFilterRange(prev => ({ ...prev, end: e.target.value }))}
                         />
                       </div>
                     </div>
@@ -749,7 +815,11 @@ export default function DatabasePage() {
                   <div>
                     <CardTitle className="text-base">Pratinjau Data</CardTitle>
                     <CardDescription>
-                      {filteredBackupData.length} data {backupSource === "payments" ? "pembayaran" : backupSource === "attendance" ? "presensi" : "log aktivitas"} ditemukan
+                      {isBackupLoading ? (
+                        <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Mencari data...</span>
+                      ) : (
+                        `${filteredBackupData.length} data ${backupSource === "payments" ? "pembayaran" : backupSource === "attendance_records" ? "presensi" : "log aktivitas"} ditemukan`
+                      )}
                     </CardDescription>
                   </div>
                   <Button
@@ -783,12 +853,12 @@ export default function DatabasePage() {
                               <TableHead className="font-semibold text-xs">Status</TableHead>
                               <TableHead className="font-semibold text-xs">Tanggal</TableHead>
                             </>
-                          ) : backupSource === "attendance" ? (
+                          ) : backupSource === "attendance_records" ? (
                             <>
                               <TableHead className="font-semibold text-xs">ID</TableHead>
                               <TableHead className="font-semibold text-xs">Kelas</TableHead>
                               <TableHead className="font-semibold text-xs">Pengajar</TableHead>
-                              <TableHead className="font-semibold text-xs">Hadir</TableHead>
+                              <TableHead className="font-semibold text-xs">Peserta</TableHead>
                               <TableHead className="font-semibold text-xs">Tanggal</TableHead>
                             </>
                           ) : (
@@ -803,14 +873,14 @@ export default function DatabasePage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(filteredBackupData as unknown as Record<string, unknown>[]).slice(0, 20).map((row, idx) => (
+                        {(filteredBackupData as any[]).slice(0, 20).map((row, idx) => (
                           <TableRow key={idx} className="hover:bg-muted/30">
                             <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
                             {backupSource === "payments" ? (
                               <>
-                                <TableCell className="text-xs font-mono">{String(row.id)}</TableCell>
+                                <TableCell className="text-xs font-mono">{String(row.id).slice(0, 8)}...</TableCell>
                                 <TableCell className="text-xs">
-                                  {dummyParticipants.find((p) => p.id === row.participantId)?.name || String(row.participantId)}
+                                  {row.participant?.name || String(row.participantId)}
                                 </TableCell>
                                 <TableCell className="text-xs">
                                   Rp {Number(row.amount).toLocaleString("id-ID")}
@@ -839,13 +909,13 @@ export default function DatabasePage() {
                                   })}
                                 </TableCell>
                               </>
-                            ) : backupSource === "attendance" ? (
+                            ) : backupSource === "attendance_records" ? (
                               <>
-                                <TableCell className="text-xs font-mono">{String(row.id)}</TableCell>
+                                <TableCell className="text-xs font-mono">{String(row.id).slice(0, 8)}...</TableCell>
                                 <TableCell className="text-xs">{String(row.className)}</TableCell>
                                 <TableCell className="text-xs">{String(row.teacherName)}</TableCell>
                                 <TableCell className="text-xs">
-                                  {String(row.presentCount)}/{String(row.totalParticipants)}
+                                  {(row.studentAttendance?.length || 0)} siswa
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                                   {new Date(String(row.date)).toLocaleDateString("id-ID", {
@@ -857,7 +927,7 @@ export default function DatabasePage() {
                               </>
                             ) : (
                               <>
-                                <TableCell className="text-xs font-mono">{String(row.id)}</TableCell>
+                                <TableCell className="text-xs font-mono">{String(row.id).slice(0, 8)}...</TableCell>
                                 <TableCell className="text-xs">
                                   <Badge variant="outline" className="capitalize text-[10px]">
                                     {String(row.action).replace("_", " ")}
@@ -865,7 +935,7 @@ export default function DatabasePage() {
                                 </TableCell>
                                 <TableCell className="text-xs">{String(row.targetName)}</TableCell>
                                 <TableCell className="text-xs">
-                                  {dummyUsers.find((u) => u.id === row.performedBy)?.name || String(row.performedBy)}
+                                  {String(row.performedBy)}
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                                   {new Date(String(row.timestamp)).toLocaleDateString("id-ID", {
