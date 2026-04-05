@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, Lock, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle, Eye, EyeOff, GraduationCap } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("admin@kursus.id");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -38,71 +38,102 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold tracking-tight">Login Admin</CardTitle>
-          <CardDescription>
-            Masukkan kredensial Anda untuk masuk ke sistem.
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive" className="py-2">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="ml-2">{error}</AlertDescription>
-              </Alert>
+    <div className="login-page">
+      {/* Animated background */}
+      <div className="login-bg">
+        <div className="login-bg-shape login-bg-shape--1" />
+        <div className="login-bg-shape login-bg-shape--2" />
+        <div className="login-bg-shape login-bg-shape--3" />
+        <div className="login-bg-grid" />
+      </div>
+
+      {/* Login card */}
+      <div className="login-card">
+        {/* Header / Branding */}
+        <div className="login-header">
+          <div className="login-logo">
+            <GraduationCap className="login-logo-icon" />
+          </div>
+          <h1 className="login-title">Command Center</h1>
+          <p className="login-subtitle">Masuk ke panel administrasi</p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="login-form">
+          {error && (
+            <Alert variant="destructive" className="login-alert">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="ml-2">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="login-field">
+            <Label htmlFor="email" className="login-label">Email</Label>
+            <div className="login-input-wrapper">
+              <Mail className="login-input-icon" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="nama@email.com"
+                className="login-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+            </div>
+          </div>
+
+          <div className="login-field">
+            <Label htmlFor="password" className="login-label">Password</Label>
+            <div className="login-input-wrapper">
+              <Lock className="login-input-icon" />
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                className="login-input login-input--password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="login-eye-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          <Button 
+            type="submit" 
+            className="login-submit"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <span className="login-spinner-wrap">
+                <span className="login-spinner" />
+                Memproses...
+              </span>
+            ) : (
+              "Masuk"
             )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@kursus.id"
-                  className="pl-9"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  className="pl-9"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            
-            <div className="text-sm text-muted-foreground mt-4 p-3 bg-muted rounded-lg border">
-              <p className="font-semibold mb-1">Dummy Credentials:</p>
-              <ul className="list-disc pl-4 space-y-1 text-xs">
-                <li>Super Admin: <code className="bg-background px-1 py-0.5 rounded border text-foreground">admin@kursus.id</code> / password123</li>
-                <li>Staff: <code className="bg-background px-1 py-0.5 rounded border text-foreground">staff@kursus.id</code> / password123</li>
-              </ul>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button 
-              type="submit" 
-              className="w-full" 
-              disabled={isLoading}
-            >
-              {isLoading ? "Memproses..." : "Masuk"}
-            </Button>
-          </CardFooter>
+          </Button>
         </form>
-      </Card>
+
+        <div className="login-footer">
+          <p>© {new Date().getFullYear()} VLS Jogja</p>
+        </div>
+      </div>
     </div>
   );
 }

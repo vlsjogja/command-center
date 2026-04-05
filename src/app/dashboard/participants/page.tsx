@@ -478,14 +478,13 @@ export default function ParticipantsPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Users className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Siswa</h1>
-              <p className="text-sm text-muted-foreground">
-                Kelola data siswa kursus ({filtered.length} siswa)
-              </p>
-            </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <Users className="h-6 w-6 text-primary" /> Siswa
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Kelola data siswa kursus ({filtered.length} siswa)
+            </p>
           </div>
           <div className="flex gap-2">
             {/* CSV Import */}
@@ -575,13 +574,13 @@ export default function ParticipantsPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input 
               placeholder="Cari nama, email, atau telepon..." 
-              className="pl-9 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" 
+              className="pl-9 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" 
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
             />
           </div>
           <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val || "all")}>
-            <SelectTrigger className="w-full sm:w-44 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm shadow-none">
+            <SelectTrigger className="w-full sm:w-44 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm shadow-none">
               <SelectValue placeholder="Semua Status">
                 {statusFilter === "all" ? "Semua Status" : statusFilter === "active" ? "Aktif" : statusFilter === "inactive" ? "Tidak Aktif" : "Lulus"}
               </SelectValue>

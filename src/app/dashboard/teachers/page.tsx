@@ -470,7 +470,7 @@ export default function TeachersPage() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Cari nama, no hp, atau kelas..."
-            className="pl-11 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none"
+            className="pl-11 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -618,7 +618,7 @@ export default function TeachersPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Masukkan nama kelas..."
-                  className="pl-10 h-11 bg-muted/30 border-none rounded-xl focus-visible:ring-primary/20"
+                  className="pl-10 h-11 bg-card border border-border/60 rounded-xl focus-visible:ring-primary/20"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus

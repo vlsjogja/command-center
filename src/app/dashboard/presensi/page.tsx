@@ -445,7 +445,7 @@ export default function AttendancePage() {
                                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input 
                                   placeholder="Cari nama siswa..."
-                                  className="pl-10 h-10 rounded-lg bg-muted/30 border-none" 
+                                  className="pl-10 h-10 rounded-lg bg-card border border-border/60" 
                                   value={studentSearch}
                                   onChange={(e) => setStudentSearch(e.target.value)}
                                 />
@@ -574,7 +574,7 @@ export default function AttendancePage() {
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
                   placeholder="Cari nama kursus..." 
-                  className="pl-10 h-10 rounded-lg bg-muted/30 border-none focus-visible:ring-0 shadow-none text-sm placeholder:text-muted-foreground/60" 
+                  className="pl-10 h-10 rounded-lg bg-card border border-border/60 focus-visible:ring-0 shadow-none text-sm placeholder:text-muted-foreground/60" 
                   value={searchCourse}
                   onChange={(e) => setSearchCourse(e.target.value)}
                 />
@@ -583,7 +583,7 @@ export default function AttendancePage() {
             <div className="grid gap-2 w-full lg:w-40">
               <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ml-1">Tahun</label>
               <Select value={filterYear} onValueChange={(v) => v && setFilterYear(v)}>
-                <SelectTrigger className="h-10 rounded-lg bg-muted/30 border-none font-medium text-sm focus-visible:ring-0 shadow-none">
+                <SelectTrigger className="h-10 rounded-lg bg-card border border-border/60 font-medium text-sm focus-visible:ring-0 shadow-none">
                   <SelectValue placeholder="Tahun" />
                 </SelectTrigger>
                 <SelectContent>
@@ -594,7 +594,7 @@ export default function AttendancePage() {
             <div className="grid gap-2 w-full lg:w-56">
               <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ml-1">Bulan</label>
               <Select value={filterMonth} onValueChange={(v) => v && setFilterMonth(v)}>
-                <SelectTrigger className="h-10 rounded-lg bg-muted/30 border-none font-medium text-sm focus-visible:ring-0 shadow-none">
+                <SelectTrigger className="h-10 rounded-lg bg-card border border-border/60 font-medium text-sm focus-visible:ring-0 shadow-none">
                   <SelectValue placeholder="Bulan" />
                 </SelectTrigger>
                     <SelectContent>

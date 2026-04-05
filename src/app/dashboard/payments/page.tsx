@@ -568,10 +568,10 @@ export default function PaymentsPage() {
         <div className="flex flex-col sm:flex-row flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Cari nama peserta atau catatan..." className="pl-9 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Cari nama peserta atau catatan..." className="pl-9 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val || "all")}>
-            <SelectTrigger className="w-full sm:w-40 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm shadow-none">
+            <SelectTrigger className="w-full sm:w-40 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm shadow-none">
               <SelectValue placeholder="Semua Status">
                 {statusFilter === "all" ? "Semua Status" : 
                  statusFilter === "pending" ? "Pending" : 
@@ -588,7 +588,7 @@ export default function PaymentsPage() {
             </SelectContent>
           </Select>
           <Select value={yearFilter} onValueChange={(val) => { if (val) setYearFilter(val); }}>
-            <SelectTrigger className="w-full sm:w-32 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm shadow-none"><SelectValue placeholder="Tahun" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-32 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm shadow-none"><SelectValue placeholder="Tahun" /></SelectTrigger>
             <SelectContent>
               {years.map((y) => (
                 <SelectItem key={y} value={y}>{y}</SelectItem>
@@ -596,7 +596,7 @@ export default function PaymentsPage() {
             </SelectContent>
           </Select>
           <Select value={monthFilter} onValueChange={(val) => setMonthFilter(val || "")}>
-            <SelectTrigger className="w-full sm:w-40 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm shadow-none">
+            <SelectTrigger className="w-full sm:w-40 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm shadow-none">
               <SelectValue placeholder="Bulan">{months.find(m => m.value === monthFilter)?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>

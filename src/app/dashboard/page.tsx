@@ -23,6 +23,13 @@ import {
   XCircle,
 } from "lucide-react";
 
+const STAT_THEMES = [
+  { bg: "rgba(99,102,241,0.10)", iconBg: "rgba(99,102,241,0.18)", iconColor: "#6366f1", border: "rgba(99,102,241,0.15)" },
+  { bg: "rgba(139,92,246,0.10)", iconBg: "rgba(139,92,246,0.18)", iconColor: "#8b5cf6", border: "rgba(139,92,246,0.15)" },
+  { bg: "rgba(16,185,129,0.10)", iconBg: "rgba(16,185,129,0.18)", iconColor: "#10b981", border: "rgba(16,185,129,0.15)" },
+  { bg: "rgba(245,158,11,0.10)", iconBg: "rgba(245,158,11,0.18)", iconColor: "#f59e0b", border: "rgba(245,158,11,0.15)" },
+];
+
 export default function DashboardPage() {
   const { user } = useAuth();
 
@@ -166,45 +173,59 @@ export default function DashboardPage() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {statCards.map((stat) => (
-          <Card
-            key={stat.title}
-            className="shadow-sm hover:shadow-md transition-shadow duration-300"
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                <stat.icon className="h-4 w-4 text-primary" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stat.value}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {stat.subtitle}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {statCards.map((stat, idx) => {
+          const theme = STAT_THEMES[idx % STAT_THEMES.length];
+          return (
+            <Card
+              key={stat.title}
+              className="relative overflow-hidden border transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5"
+              style={{ borderColor: theme.border }}
+            >
+              {/* Subtle gradient top accent */}
+              <div
+                className="absolute top-0 left-0 right-0 h-1 rounded-t-lg"
+                style={{ background: `linear-gradient(90deg, ${theme.iconColor}, ${theme.iconColor}88)` }}
+              />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-5">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {stat.title}
+                </CardTitle>
+                <div
+                  className="h-10 w-10 rounded-xl flex items-center justify-center"
+                  style={{ background: theme.iconBg }}
+                >
+                  <stat.icon className="h-5 w-5" style={{ color: theme.iconColor }} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {stat.value}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stat.subtitle}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Teacher Content */}
       {isTeacher && teacherData && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="shadow-sm">
+          <Card className="shadow-sm border-border/60">
             <CardHeader>
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.15)' }}>
+                  <Clock className="h-4 w-4" style={{ color: '#6366f1' }} />
+                </div>
                 Jadwal Mengajar
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {teacherData.schedule.split(';').map((sched, idx) => (
-                  <div key={idx} className="p-4 rounded-lg bg-muted/50 border border-muted">
+                  <div key={idx} className="p-4 rounded-xl bg-accent/50 border border-border/60">
                     <p className="text-sm font-medium leading-relaxed">
                       {sched.trim()}
                     </p>
@@ -214,17 +235,19 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm">
+          <Card className="shadow-sm border-border/60">
             <CardHeader>
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-primary" />
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(139,92,246,0.15)' }}>
+                  <BookOpen className="h-4 w-4" style={{ color: '#8b5cf6' }} />
+                </div>
                 Kelas yang Diampu
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
                 {teacherData.assignedClasses.split(',').map((cls, idx) => (
-                  <Badge key={idx} variant="secondary" className="px-3 py-1 text-sm font-normal">
+                  <Badge key={idx} variant="secondary" className="px-3 py-1.5 text-sm font-normal rounded-lg">
                     {cls.trim()}
                   </Badge>
                 ))}
@@ -236,14 +259,17 @@ export default function DashboardPage() {
 
       {/* Recent Payments - Hidden for Teachers */}
       {!isTeacher && (
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-border/60">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold">
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.15)' }}>
+                <CreditCard className="h-4 w-4" style={{ color: '#10b981' }} />
+              </div>
               Pembayaran Terbaru
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {recentPayments.map((payment) => {
                 const participant = dummyParticipants.find(
                   (p) => p.id === payment.participantId
@@ -254,7 +280,7 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={payment.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    className="flex items-center justify-between p-3.5 rounded-xl bg-accent/40 hover:bg-accent/70 transition-colors border border-transparent hover:border-border/50"
                   >
                     <div className="flex items-center gap-3">
                       {statusIcon[payment.effectiveStatus as keyof typeof statusIcon]}

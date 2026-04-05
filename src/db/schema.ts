@@ -53,6 +53,7 @@ export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull(),
   teacherId: uuid("teacher_id").references(() => teachers.id, { onDelete: "set null" }),
   avatar: text("avatar"),

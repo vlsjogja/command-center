@@ -270,8 +270,10 @@ export default function ClassesPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-              <h1 className="text-2xl font-bold tracking-tight">Daftar Kelas</h1>
-              <p className="text-sm text-muted-foreground mt-1">Kelola kelas dan siswa</p>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <BookOpen className="h-6 w-6 text-primary" /> Daftar Kelas
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">Kelola kelas dan siswa</p>
           </div>
           <Dialog open={isAddOpen} onOpenChange={(v) => { setIsAddOpen(v); if (!v) setForm(emptyForm); }}>
             <DialogTrigger render={(props) => (
@@ -327,7 +329,7 @@ export default function ClassesPage() {
         {/* Search */}
         <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Cari kelas..." className="pl-11 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder="Cari kelas..." className="pl-11 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
         {/* Class Cards */}

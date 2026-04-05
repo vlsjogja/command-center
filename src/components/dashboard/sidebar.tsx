@@ -167,19 +167,21 @@ export function Sidebar() {
         {/* Logo / Header */}
         <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
           {!collapsed && (
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-                K
+            <Link href="/dashboard" className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                   style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                V
               </div>
-              <span className="text-lg font-bold text-sidebar-foreground">
-                Kursus
+              <span className="text-lg font-bold text-sidebar-foreground tracking-tight">
+                VLS Jogja
               </span>
             </Link>
           )}
           {collapsed && (
             <div className="mx-auto">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-                K
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                   style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                V
               </div>
             </div>
           )}
@@ -255,38 +257,46 @@ export function Sidebar() {
 
         {/* User footer */}
         <div className="px-3 pb-4">
-          <Separator className="mb-3" />
+          <div className="h-px w-full bg-sidebar-border/30 mb-4" />
           <div
             className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-lg",
-              collapsed && "justify-center"
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 hover:bg-sidebar-accent/50 group/user",
+              collapsed ? "flex-col justify-center gap-1.5" : "flex-row"
             )}
           >
-            <Avatar className="h-9 w-9 flex-shrink-0">
+            <Avatar className={cn(
+              "h-9 w-9 flex-shrink-0 ring-2 ring-sidebar-border/50 group-hover/user:ring-primary/40 transition-all",
+              collapsed && "h-8 w-8"
+            )}>
               <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                 {initials}
               </AvatarFallback>
             </Avatar>
+            
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate text-sidebar-foreground">
                   {user?.name}
                 </p>
-                <p className="text-xs text-sidebar-foreground/60 truncate">
+                <p className="text-[10px] uppercase font-bold tracking-wider text-sidebar-foreground/40 truncate">
                   {roleLabel}
                 </p>
               </div>
             )}
-            {!collapsed && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 flex-shrink-0 hover:bg-destructive/10 hover:text-destructive"
-                onClick={logout}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            )}
+            
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 flex-shrink-0 transition-all duration-200",
+                "text-sidebar-foreground/50 hover:bg-destructive/10 hover:text-destructive",
+                collapsed ? "h-8 w-8" : ""
+              )}
+              onClick={logout}
+              title="Keluar"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </aside>

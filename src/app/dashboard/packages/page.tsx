@@ -344,10 +344,10 @@ export default function PackagesPage() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Cari nama paket atau deskripsi..." className="pl-9 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input placeholder="Cari nama paket atau deskripsi..." className="pl-9 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm placeholder:text-muted-foreground/60 shadow-none" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={statusFilter} onValueChange={(val) => { if (val) setStatusFilter(val); }}>
-            <SelectTrigger className="w-full sm:w-40 h-10 bg-muted/30 border-none rounded-lg focus-visible:ring-0 text-sm shadow-none">
+            <SelectTrigger className="w-full sm:w-40 h-10 bg-card border border-border/60 rounded-lg focus-visible:ring-0 text-sm shadow-none">
               <SelectValue placeholder="Semua Status">
                 {statusFilter === "all" ? "Semua Status" : statusFilter === "active" ? "Aktif" : "Tidak Aktif"}
               </SelectValue>
