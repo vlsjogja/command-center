@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Trash2,
   Clock,
@@ -34,6 +34,7 @@ import {
   GraduationCap,
   Layers,
   UserCheck,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,8 +47,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Teacher } from "@/types";
-import { dummyTeachers, dummyClassPackages } from "@/lib/dummy-data";
+import type { Teacher, ClassPackage } from "@/types";
+import { getTeachers, createTeacher, updateTeacher, deleteTeacher } from "./actions";
+import { getPackages } from "../packages/actions";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
@@ -88,7 +90,9 @@ const emptyForm: FormData = {
 };
 
 export default function TeachersPage() {
-  const [teachers, setTeachers] = useState<Teacher[]>(dummyTeachers);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [packages, setPackages] = useState<ClassPackage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -106,6 +110,23 @@ export default function TeachersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentAssignmentIdx, setCurrentAssignmentIdx] = useState<number | null>(null);
   const [tempSchedule, setTempSchedule] = useState<ScheduleEntry[]>([]);
+
+  const fetchHistory = async () => {
+    const { data: tRes } = await getTeachers();
+    if (tRes) setTeachers(tRes as any);
+  };
+
+  async function loadData() {
+    setIsLoading(true);
+    const [tRes, pRes] = await Promise.all([getTeachers(), getPackages()]);
+    if (tRes.data) setTeachers(tRes.data as any);
+    if (pRes.data) setPackages(pRes.data as any);
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Sync assignments to form.assignedClasses and form.schedule
   const syncAssignmentsToForm = (current: Assignment[]) => {
@@ -133,7 +154,7 @@ export default function TeachersPage() {
     }));
   };
 
-  const parseExistingData = (classStr: string, scheduleStr: string): Assignment[] => {
+  const parseExistingData = (classStr: string, scheduleStr: string, currentPackages: ClassPackage[]): Assignment[] => {
     if (!classStr) return [];
     
     const classNames = classStr.split(", ");
@@ -151,14 +172,12 @@ export default function TeachersPage() {
     }
 
     return classNames
-      .filter((name) => dummyClassPackages.some(pkg => pkg.name === name))
+      .filter((name) => currentPackages.some(pkg => pkg.name === name))
       .map((name) => {
         const entries = defaultSchedule.map((d) => ({ ...d, enabled: false, times: [] as TimeSlot[] }));
       const dayStr = scheduleMap[name] || scheduleMap["Jadwal"] || "";
       
       if (dayStr) {
-        // Updated regex to catch Day (T1, T2, ...) segments
-        // Split by days: "Senin (07:00-09:00), Selasa (10:00-11:00)"
         const daySegments = dayStr.split(/, (?=[A-Z])/);
         daySegments.forEach((ds) => {
           const match = ds.match(/(.*) \((.*)\)/);
@@ -217,7 +236,6 @@ export default function TeachersPage() {
   const updateTempSchedule = (sIndex: number, updates: Partial<ScheduleEntry>) => {
     const next = [...tempSchedule];
     next[sIndex] = { ...next[sIndex], ...updates };
-    // If enabled but no times, add a default one
     if (next[sIndex].enabled && next[sIndex].times.length === 0) {
       next[sIndex].times = [{ startTime: "07:00", endTime: "09:00" }];
     }
@@ -233,7 +251,6 @@ export default function TeachersPage() {
   const removeTimeSlot = (sIndex: number, tIndex: number) => {
     const next = [...tempSchedule];
     next[sIndex].times.splice(tIndex, 1);
-    // If no times left, disable the day
     if (next[sIndex].times.length === 0) {
       next[sIndex].enabled = false;
     }
@@ -246,16 +263,16 @@ export default function TeachersPage() {
     setTempSchedule(next);
   };
 
-  const filteredClassPackages = dummyClassPackages.filter(pkg => 
+  const filteredClassPackages = packages.filter(pkg => 
     pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
     !assignments.some(a => a.className === pkg.name)
   );
 
-  const filtered = teachers.filter((t) => {
+  const filtered = (teachers as any[]).filter((t: any) => {
     return (
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.assignedClasses.toLowerCase().includes(search.toLowerCase()) ||
-      t.phone.includes(search)
+      (t.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (t.assignedClasses?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (t.phone || "").includes(search)
     );
   });
   
@@ -267,32 +284,31 @@ export default function TeachersPage() {
     totalItems,
   } = usePagination({ data: filtered, itemsPerPage: 20 });
 
-  function generateId() {
-    return `t-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  }
-
-  function handleAdd() {
+  async function handleAdd() {
     if (!form.name || !form.phone) {
       toast.error("Nama dan No HP wajib diisi.");
       return;
     }
-    const newT: Teacher = {
-      ...form,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-    };
-    setTeachers((prev) => [newT, ...prev]);
+    const { error } = await createTeacher(form);
+    if (error) {
+      toast.error("Gagal menambahkan pengajar: " + error);
+      return;
+    }
+    loadData();
     setForm(emptyForm);
     setAssignments([]);
     setIsAddOpen(false);
     toast.success("Pengajar berhasil ditambahkan.");
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!editingId || !form.name || !form.phone) return;
-    setTeachers((prev) =>
-      prev.map((t) => (t.id === editingId ? { ...t, ...form } : t))
-    );
+    const { error } = await updateTeacher(editingId, form);
+    if (error) {
+      toast.error("Gagal memperbarui pengajar: " + error);
+      return;
+    }
+    loadData();
     setIsEditOpen(false);
     setEditingId(null);
     setForm(emptyForm);
@@ -305,10 +321,15 @@ export default function TeachersPage() {
     setDeleteConfirmOpen(true);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (itemToDelete) {
-      setTeachers((prev) => prev.filter((t) => t.id !== itemToDelete.id));
-      toast.success(`Pengajar ${itemToDelete.name} berhasil dihapus.`);
+      const { success, error } = await deleteTeacher(itemToDelete.id);
+      if (success) {
+        loadData();
+        toast.success(`Pengajar ${itemToDelete.name} berhasil dihapus.`);
+      } else {
+        toast.error("Gagal menghapus: " + error);
+      }
       setDeleteConfirmOpen(false);
       setItemToDelete(null);
     }
@@ -322,7 +343,7 @@ export default function TeachersPage() {
       assignedClasses: t.assignedClasses,
       schedule: t.schedule,
     });
-    setAssignments(parseExistingData(t.assignedClasses, t.schedule));
+    setAssignments(parseExistingData(t.assignedClasses, t.schedule, packages));
     setIsEditOpen(true);
   }
 
@@ -488,9 +509,18 @@ export default function TeachersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-20">
+                    <TableCell colSpan={3} className="text-center py-20">
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                        <p className="text-sm font-medium text-muted-foreground animate-pulse">Memuat data pengajar...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : paginatedData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-20">
                       <div className="flex flex-col items-center gap-2 opacity-20">
                         <Search className="h-10 w-10" />
                         <p className="text-sm font-medium">Tidak ada data</p>
@@ -499,7 +529,7 @@ export default function TeachersPage() {
                   </TableRow>
                 ) : (
                   paginatedData.map((t) => {
-                    const teacherAssignments = parseExistingData(t.assignedClasses, t.schedule);
+                    const teacherAssignments = parseExistingData(t.assignedClasses || "", t.schedule || "", packages);
                     return (
                       <TableRow key={t.id} className="hover:bg-primary/[0.02] transition-colors border-b border-muted/50 group align-top">
                         <TableCell className="px-4 py-6 align-top w-px whitespace-nowrap">
@@ -522,9 +552,9 @@ export default function TeachersPage() {
                                         <div key={si} className="flex flex-col items-start gap-1">
                                           <span className="text-[11px] font-bold text-foreground/80">{s.day}</span>
                                           <div className="flex flex-col gap-1">
-                                            {s.times.map((t, ti) => (
-                                              <Badge key={ti} variant="secondary" className="bg-muted/50 text-muted-foreground text-[11px] h-5 px-1.5 font-medium border-none shadow-none whitespace-nowrap">
-                                                {t.startTime} - {t.endTime}
+                                            {s.times.map((ti_entry, ti_idx) => (
+                                              <Badge key={ti_idx} variant="secondary" className="bg-muted/50 text-muted-foreground text-[11px] h-5 px-1.5 font-medium border-none shadow-none whitespace-nowrap">
+                                                {ti_entry.startTime} - {ti_entry.endTime}
                                               </Badge>
                                             ))}
                                           </div>

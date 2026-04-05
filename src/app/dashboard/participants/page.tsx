@@ -61,6 +61,8 @@ import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialo
 import { calculateEffectiveStatus } from "@/lib/format";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { getParticipants, addParticipant, updateParticipant, deleteParticipant, bulkAddParticipants } from "./actions";
+import { Loader2 } from "lucide-react";
 
 type FormData = Omit<Participant, "id"> & { reason?: string };
 
@@ -75,7 +77,8 @@ const emptyForm: FormData = {
 };
 
 export default function ParticipantsPage() {
-  const [participants, setParticipants] = useState<Participant[]>(dummyParticipants);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -93,6 +96,18 @@ export default function ParticipantsPage() {
   // Delete Confirm State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  async function fetchParticipants() {
+    setIsLoading(true);
+    const { data, error } = await getParticipants();
+    if (data) setParticipants(data as unknown as Participant[]);
+    if (error) toast.error("Gagal mengambil data siswa: " + error);
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
+    fetchParticipants();
+  }, []);
 
   const filtered = participants.filter((p) => {
     const matchSearch =
@@ -115,65 +130,51 @@ export default function ParticipantsPage() {
     return `p-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!form.name || !form.email) {
       toast.error("Nama dan email wajib diisi.");
       return;
     }
-    const pCreatedBy = user?.name || "Admin";
-    const newP: Participant = {
+
+    const payload = {
       ...form,
-      id: generateId(),
+      createdBy: user?.name || "Admin",
       createdAt: new Date(form.createdAt).toISOString(),
-      createdBy: pCreatedBy,
-      statusHistory: [
-        {
-          status: "active",
-          changedAt: new Date().toISOString(),
-          changedBy: pCreatedBy,
-          reason: "Pendaftaran awal",
-        },
-      ],
     };
-    const { reason, ...cleanP } = newP as any;
-    setParticipants((prev) => [cleanP, ...prev]);
-    setForm(emptyForm);
-    setIsAddOpen(false);
-    toast.success("Siswa berhasil ditambahkan.");
+
+    toast.promise(addParticipant(payload), {
+      loading: "Menambahkan siswa...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchParticipants();
+        setIsAddOpen(false);
+        setForm(emptyForm);
+        return "Siswa berhasil ditambahkan.";
+      },
+      error: (err) => err.message
+    });
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!editingId || !form.name || !form.email) return;
-    setParticipants((prev) =>
-      prev.map((p) => {
-        if (p.id === editingId) {
-          const hasStatusChanged = p.status !== form.status;
-          const updatedHistory = [...(p.statusHistory || [])];
-          
-          if (hasStatusChanged) {
-            updatedHistory.push({
-              status: form.status,
-              changedAt: new Date().toISOString(),
-              changedBy: user?.name || "Admin",
-              reason: form.status === "inactive" ? form.reason : "Perubahan status manual",
-            });
-          }
 
-          const { reason, ...cleanForm } = form;
-          return { 
-            ...p, 
-            ...cleanForm, 
-            createdAt: new Date(form.createdAt).toISOString(),
-            statusHistory: updatedHistory
-          };
-        }
-        return p;
-      })
-    );
-    setIsEditOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
-    toast.success("Data siswa berhasil diperbarui.");
+    const payload = {
+      ...form,
+      performedBy: user?.name || "Admin",
+    };
+
+    toast.promise(updateParticipant(editingId, payload), {
+      loading: "Memperbarui data siswa...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchParticipants();
+        setIsEditOpen(false);
+        setEditingId(null);
+        setForm(emptyForm);
+        return "Data siswa berhasil diperbarui.";
+      },
+      error: (err) => err.message
+    });
   }
 
   function initiateDelete(id: string, name: string) {
@@ -181,12 +182,19 @@ export default function ParticipantsPage() {
     setDeleteConfirmOpen(true);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (itemToDelete) {
-      setParticipants((prev) => prev.filter((p) => p.id !== itemToDelete.id));
-      toast.success(`Siswa ${itemToDelete.name} berhasil dihapus.`);
-      setDeleteConfirmOpen(false);
-      setItemToDelete(null);
+      toast.promise(deleteParticipant(itemToDelete.id), {
+        loading: "Menghapus data siswa...",
+        success: ({ success, error }) => {
+          if (error) throw new Error(error);
+          fetchParticipants();
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+          return `Siswa ${itemToDelete.name} berhasil dihapus.`;
+        },
+        error: (err) => err.message
+      });
     }
   }
 
@@ -263,27 +271,26 @@ export default function ParticipantsPage() {
     });
   }
 
-  function handleCsvImport() {
+  async function handleCsvImport() {
     const pCreatedBy = user?.name || "Admin";
     const newParticipants = csvPreview.map((data) => ({
       ...data,
-      id: generateId(),
-      createdAt: new Date(data.createdAt).toISOString(),
       createdBy: pCreatedBy,
-      statusHistory: [
-        {
-          status: data.status || "active",
-          changedAt: new Date().toISOString(),
-          changedBy: pCreatedBy,
-          reason: "Import CSV",
-        },
-      ],
+      createdAt: new Date(data.createdAt).toISOString(),
     }));
-    setParticipants((prev) => [...newParticipants, ...prev]);
-    setCsvPreview([]);
-    setIsCsvOpen(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    toast.success(`${newParticipants.length} siswa berhasil diimport.`);
+
+    toast.promise(bulkAddParticipants(newParticipants), {
+      loading: "Mengimport data siswa...",
+      success: ({ success, error }) => {
+        if (error) throw new Error(error);
+        fetchParticipants();
+        setCsvPreview([]);
+        setIsCsvOpen(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return `${newParticipants.length} siswa berhasil diimport.`;
+      },
+      error: (err) => err.message
+    });
   }
 
   function downloadTemplate() {
@@ -609,9 +616,18 @@ export default function ParticipantsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Tidak ada data siswa.</TableCell>
+                    <TableCell colSpan={6} className="text-center py-20 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+                        <p className="text-sm font-medium">Memuat data siswa...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : paginatedData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Tidak ada data siswa.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedData.map((p) => (

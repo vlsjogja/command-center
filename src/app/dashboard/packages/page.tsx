@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { RoleGuard } from "@/components/auth/role-guard";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,11 +44,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Package } from "@/types";
-import { dummyPackages, dummyClassPackages } from "@/lib/dummy-data";
 import { formatCurrency } from "@/lib/format";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { usePagination } from "@/hooks/usePagination";
 import { PaginationControls } from "@/components/ui/pagination";
+import { getPackages, getClassPackages, addPackage, updatePackage, deletePackage } from "./actions";
+import { Loader2 } from "lucide-react";
+import type { ClassPackage } from "@/types";
 
 type PackageForm = {
   nama: string;
@@ -69,7 +71,9 @@ const emptyForm: PackageForm = {
 };
 
 export default function PackagesPage() {
-  const [packagesData, setPackagesData] = useState<Package[]>(dummyPackages);
+  const [packagesData, setPackagesData] = useState<Package[]>([]);
+  const [classPackagesData, setClassPackagesData] = useState<ClassPackage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -83,6 +87,26 @@ export default function PackagesPage() {
   // Delete Confirm State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  async function fetchData() {
+    setIsLoading(true);
+    const [pkgs, clPkgs] = await Promise.all([
+      getPackages(),
+      getClassPackages(),
+    ]);
+
+    if (pkgs.data) setPackagesData(pkgs.data as any);
+    if (clPkgs.data) setClassPackagesData(clPkgs.data as any);
+    
+    if (pkgs.error) toast.error("Gagal mengambil data paket: " + pkgs.error);
+    if (clPkgs.error) toast.error("Gagal mengambil data kelas: " + clPkgs.error);
+    
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const filtered = packagesData.filter((p) => {
     const matchSearch = p.nama.toLowerCase().includes(search.toLowerCase()) || (p.deskripsi?.toLowerCase().includes(search.toLowerCase()) ?? false);
@@ -102,47 +126,44 @@ export default function PackagesPage() {
     return `pkg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!form.nama || !form.kelas) {
       toast.error("Nama paket dan kelas wajib diisi.");
       return;
     }
-    const newPackage: Package = {
-      id: generateId(),
-      nama: form.nama,
-      nominal: form.nominal,
-      kelas: form.kelas,
-      durasi: form.durasi,
-      deskripsi: form.deskripsi,
-      status: form.status,
-      createdAt: new Date().toISOString(),
-    };
-    setPackagesData((prev) => [newPackage, ...prev]);
-    setForm(emptyForm);
-    setIsAddOpen(false);
-    setKelasSearch("");
-    setKelasVisibleCount(10);
-    toast.success("Data paket berhasil ditambahkan.");
+
+    toast.promise(addPackage(form), {
+      loading: "Menambahkan data paket...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchData();
+        setIsAddOpen(false);
+        setForm(emptyForm);
+        setKelasSearch("");
+        setKelasVisibleCount(10);
+        return "Data paket berhasil ditambahkan.";
+      },
+      error: (err) => err.message
+    });
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!editingId) return;
-    setPackagesData((prev) =>
-      prev.map((p) =>
-        p.id === editingId
-          ? {
-              ...p,
-              ...form,
-            }
-          : p
-      )
-    );
-    setIsEditOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
-    setKelasSearch("");
-    setKelasVisibleCount(10);
-    toast.success("Data paket berhasil diperbarui.");
+
+    toast.promise(updatePackage(editingId, form), {
+      loading: "Memperbarui data paket...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchData();
+        setIsEditOpen(false);
+        setEditingId(null);
+        setForm(emptyForm);
+        setKelasSearch("");
+        setKelasVisibleCount(10);
+        return "Data paket berhasil diperbarui.";
+      },
+      error: (err) => err.message
+    });
   }
 
   function initiateDelete(id: string, name: string) {
@@ -150,12 +171,19 @@ export default function PackagesPage() {
     setDeleteConfirmOpen(true);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (itemToDelete) {
-      setPackagesData((prev) => prev.filter((p) => p.id !== itemToDelete.id));
-      toast.success(`Data paket ${itemToDelete.name} berhasil dihapus.`);
-      setDeleteConfirmOpen(false);
-      setItemToDelete(null);
+      toast.promise(deletePackage(itemToDelete.id), {
+        loading: "Menghapus data paket...",
+        success: ({ error }) => {
+          if (error) throw new Error(error);
+          fetchData();
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+          return `Data paket ${itemToDelete.name} berhasil dihapus.`;
+        },
+        error: (err) => err.message
+      });
     }
   }
 
@@ -199,7 +227,7 @@ export default function PackagesPage() {
             onClick={() => setIsKelasSelectOpen(true)}
           >
             {form.kelas ? (
-              <span className="truncate">{dummyClassPackages.find(c => c.id === form.kelas)?.name}</span>
+              <span className="truncate">{classPackagesData.find(c => c.id === form.kelas)?.name}</span>
             ) : (
               <span className="text-muted-foreground">Pilih kelas...</span>
             )}
@@ -254,13 +282,22 @@ export default function PackagesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-20">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+                        <p className="text-sm font-medium text-muted-foreground">Memuat data paket...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : paginatedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Tidak ada data.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedData.map((pkg) => {
-                    const classInfo = dummyClassPackages.find((c) => c.id === pkg.kelas);
+                    const classInfo = classPackagesData.find((c) => c.id === pkg.kelas);
                     return (
                       <TableRow key={pkg.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell className="font-medium">{pkg.nama}</TableCell>
@@ -427,7 +464,7 @@ export default function PackagesPage() {
             
             <div className="flex-grow overflow-y-auto p-2 space-y-1 custom-scrollbar">
               {(() => {
-                const filteredClasses = dummyClassPackages.filter(c => 
+                const filteredClasses = classPackagesData.filter(c => 
                   c.name.toLowerCase().includes(kelasSearch.toLowerCase()) || 
                   c.description?.toLowerCase().includes(kelasSearch.toLowerCase())
                 );

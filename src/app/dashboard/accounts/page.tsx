@@ -52,10 +52,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User, Role } from "@/types";
-import { dummyUsers } from "@/lib/dummy-data";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { getUsers, addUser, updateUser, deleteUser } from "./actions";
+import { Loader2 } from "lucide-react";
 
 type FormData = Omit<User, "id"> & { password?: string };
 
@@ -68,7 +69,8 @@ const emptyForm: FormData = {
 };
 
 export default function AccountsPage() {
-  const [users, setUsers] = useState<User[]>(dummyUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<string>("all");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -79,6 +81,21 @@ export default function AccountsPage() {
   // Delete Confirm State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  async function fetchUsers() {
+    setIsLoading(true);
+    const { data, error } = await getUsers();
+    if (data) {
+      // Cast role to Role type safely
+      setUsers(data as User[]);
+    }
+    if (error) toast.error("Gagal mengambil data akun: " + error);
+    setIsLoading(false);
+  }
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   const filtered = users.filter((u) => {
     const matchesSearch =
@@ -112,35 +129,40 @@ export default function AccountsPage() {
     return `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
-  function handleAdd() {
-    if (!form.name || !form.email) {
-      toast.error("Nama dan Email wajib diisi.");
+  async function handleAdd() {
+    if (!form.name || !form.email || !form.password) {
+      toast.error("Nama, Email dan Kata Sandi wajib diisi.");
       return;
     }
-    const newUser: User = {
-      id: generateId(),
-      name: form.name,
-      email: form.email,
-      role: form.role,
-      avatar: form.avatar,
-    };
-    setUsers((prev) => [newUser, ...prev]);
-    setForm(emptyForm);
-    setIsAddOpen(false);
-    toast.success("Akun berhasil ditambahkan.");
+    
+    toast.promise(addUser(form), {
+      loading: "Menambahkan akun...",
+      success: ({ data, error }) => {
+        if (error) throw new Error(error);
+        fetchUsers();
+        setIsAddOpen(false);
+        setForm(emptyForm);
+        return "Akun berhasil ditambahkan.";
+      },
+      error: (err) => err.message
+    });
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!editingId || !form.name || !form.email) return;
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === editingId ? { ...u, name: form.name, email: form.email, role: form.role } : u
-      )
-    );
-    setIsEditOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
-    toast.success("Data akun berhasil diperbarui.");
+
+    toast.promise(updateUser(editingId, form), {
+      loading: "Memperbarui akun...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchUsers();
+        setIsEditOpen(false);
+        setEditingId(null);
+        setForm(emptyForm);
+        return "Data akun berhasil diperbarui.";
+      },
+      error: (err) => err.message
+    });
   }
 
   function initiateDelete(id: string, name: string) {
@@ -152,12 +174,19 @@ export default function AccountsPage() {
     setDeleteConfirmOpen(true);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (itemToDelete) {
-      setUsers((prev) => prev.filter((u) => u.id !== itemToDelete.id));
-      toast.success(`${itemToDelete.name} berhasil dihapus.`);
-      setDeleteConfirmOpen(false);
-      setItemToDelete(null);
+      toast.promise(deleteUser(itemToDelete.id), {
+        loading: "Menghapus akun...",
+        success: ({ success, error }) => {
+          if (error) throw new Error(error);
+          fetchUsers();
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+          return `${itemToDelete.name} berhasil dihapus.`;
+        },
+        error: (err) => err.message
+      });
     }
   }
 
@@ -327,7 +356,16 @@ export default function AccountsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedData.length === 0 ? (
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-20">
+                          <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+                            <p className="text-sm font-medium text-muted-foreground">Memuat data...</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : paginatedData.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={3} className="text-center py-20">
                           <div className="flex flex-col items-center gap-2 opacity-20">
@@ -370,7 +408,7 @@ export default function AccountsPage() {
                                 size="icon"
                                 className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all"
                                 onClick={() => initiateDelete(u.id, u.name)}
-                                disabled={u.id === "usr-1"}
+                                disabled={u.role === "super_admin" && users.filter(u => u.role === "super_admin").length <= 1}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>

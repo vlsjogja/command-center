@@ -3,12 +3,10 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { 
-  dummyTeachers, 
-  dummyParticipants, 
-  dummyParticipantClasses,
-  dummyAttendanceHistory,
-  dummyClassPackages 
-} from "@/lib/dummy-data";
+  getAttendanceHistory, 
+  saveAttendanceRecord, 
+  getTodayData 
+} from "./actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,7 +65,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
-import type { Teacher, Participant, AttendanceRecord } from "@/types";
+import type { Participant, AttendanceRecord, ClassPackage } from "@/types";
+import { Loader2 } from "lucide-react";
 
 const DAYS_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -76,6 +75,7 @@ type ClassInstance = {
   className: string;
   teacherId: string;
   teacherName: string;
+  teacherPhone: string | null;
   startTime: string;
   endTime: string;
   day: string;
@@ -99,9 +99,12 @@ export default function AttendancePage() {
   const [searchCourse, setSearchCourse] = useState("");
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
   const [filterMonth, setFilterMonth] = useState<string>(new Date().getMonth().toString());
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [allParticipants, setAllParticipants] = useState<Participant[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 1 + i).toString());
@@ -121,25 +124,38 @@ export default function AttendancePage() {
     { value: "11", label: "Desember" },
   ];
 
-  useEffect(() => {
+  const fetchHistory = async () => {
+    setIsHistoryLoading(true);
+    const { data, error } = await getAttendanceHistory();
+    if (data) setHistory(data);
+    setIsHistoryLoading(false);
+  };
+
+  async function fetchData() {
+    setIsLoading(true);
+    const { data, error } = await getTodayData();
+    if (error) { toast.error("Gagal memuat data: " + error); setIsLoading(false); return; }
+    if (!data) { setIsLoading(false); return; }
+
+    const { teachers, packages, allParticipants: participantsFromDB } = data;
+    setAllParticipants(participantsFromDB as any);
+
     const today = new Date();
     const dayName = DAYS_ID[today.getDay()];
-    
-    // Logic to parse teacher schedules and find classes for today
     const classes: ClassInstance[] = [];
-    
-    const relevantTeachers = user?.role === "super_admin" 
-      ? dummyTeachers 
-      : dummyTeachers.filter(t => t.id === user?.teacherId);
 
-    relevantTeachers.forEach(teacher => {
+    const relevantTeachers = user?.role === "super_admin" 
+      ? teachers 
+      : (teachers as any[]).filter(t => t.id === user?.teacherId);
+
+    relevantTeachers.forEach((teacher: any) => {
       const scheduleStr = teacher.schedule;
       if (!scheduleStr) return;
 
       const segments = scheduleStr.includes(";") ? scheduleStr.split("; ") : [scheduleStr];
       
-      segments.forEach(seg => {
-        let className = teacher.assignedClasses.split(", ")[0] || "Kelas Utama";
+      segments.forEach((seg: string) => {
+        let className = teacher.assignedClasses?.split(", ")[0] || "Kelas Utama";
         let dayData = seg;
 
         if (seg.includes(": ")) {
@@ -157,17 +173,14 @@ export default function AttendancePage() {
               const timePairs = timesContent.split(", ");
               timePairs.forEach((tp, idx) => {
                 const [start, end] = tp.split("-");
-                // Find the class package ID for this class name
-                const pkg = dummyClassPackages.find(p => 
+                // Find matching package
+                const pkg = (packages as any[]).find(p => 
                   p.name.toLowerCase().includes(className.toLowerCase()) || 
                   className.toLowerCase().includes(p.name.toLowerCase())
                 );
                 
                 const classParticipants = pkg 
-                  ? dummyParticipantClasses
-                      .filter(pc => pc.classPackageId === pkg.id)
-                      .map(pc => dummyParticipants.find(p => p.id === pc.participantId))
-                      .filter(Boolean) as Participant[]
+                  ? pkg.enrollments.map((en: any) => en.participant).filter(Boolean) as Participant[]
                   : [];
 
                 classes.push({
@@ -175,6 +188,7 @@ export default function AttendancePage() {
                   className,
                   teacherId: teacher.id,
                   teacherName: teacher.name,
+                  teacherPhone: teacher.phone,
                   day,
                   startTime: start?.trim() || "00:00",
                   endTime: end?.trim() || "00:00",
@@ -191,6 +205,11 @@ export default function AttendancePage() {
     setTodayClasses(classes);
     if (classes.length > 0) setSelectedClassId(classes[0].id);
     setIsLoading(false);
+  }
+
+  useEffect(() => {
+    fetchData();
+    fetchHistory();
   }, [user]);
 
   const toggleAttendance = (classId: string, studentId: string) => {
@@ -203,11 +222,36 @@ export default function AttendancePage() {
     }));
   };
 
-  const handleSaveAttendance = () => {
-    toast.success("Presensi hari ini berhasil disimpan!");
-  };
+  async function handleSaveAttendance() {
+    if (!selectedClass) return;
+    
+    const records = mergedParticipants.map(p => ({
+      participantId: p.id,
+      participantName: p.name,
+      status: (attendance[selectedClass.id]?.[p.id] ? "present" : "absent") as "present" | "absent"
+    }));
 
-  const filteredHistory = dummyAttendanceHistory.filter(record => {
+    const sessionDate = new Date();
+    // Use the class's scheduled time for the timestamp
+    const [hours, minutes] = selectedClass.startTime.split(":");
+    sessionDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+    const { success, error } = await saveAttendanceRecord({
+      teacherName: selectedClass.teacherName,
+      className: selectedClass.className,
+      date: sessionDate.toISOString(),
+      attendance: records
+    });
+
+    if (success) {
+      toast.success("Presensi hari ini berhasil disimpan!");
+      fetchHistory(); // Refresh history tab
+    } else {
+      toast.error("Gagal menyimpan presensi: " + error);
+    }
+  }
+
+  const filteredHistory = history.filter(record => {
     const recordDate = new Date(record.date);
     const matchCourse = record.className.toLowerCase().includes(searchCourse.toLowerCase());
     const matchYear = recordDate.getFullYear().toString() === filterYear;
@@ -242,7 +286,7 @@ export default function AttendancePage() {
     : [];
 
   // Filter students for ad-hoc dialog
-  const availableStudents = dummyParticipants.filter(p => 
+  const availableStudents = allParticipants.filter(p => 
     !mergedParticipants.some(mp => mp.id === p.id) &&
     p.name.toLowerCase().includes(studentSearch.toLowerCase())
   );
@@ -280,7 +324,12 @@ export default function AttendancePage() {
   };
 
   if (isLoading) {
-    return <div className="p-8 text-center text-muted-foreground animate-pulse">Memuat data presensi...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-sm font-medium text-muted-foreground animate-pulse">Memuat data presensi...</p>
+      </div>
+    );
   }
 
   return (
@@ -418,21 +467,20 @@ export default function AttendancePage() {
                             size="sm" 
                             className="h-8 rounded-lg gap-1.5 text-[11px] font-semibold border-success/20 hover:bg-success/5 hover:text-success transition-all text-success"
                             onClick={() => {
-                              const teacher = dummyTeachers.find(t => t.id === selectedClass.teacherId);
-                              if (!teacher?.phone) return toast.error("Nomor telepon pengajar tidak tersedia");
+                              if (!selectedClass.teacherPhone) return toast.error("Nomor telepon pengajar tidak tersedia");
                               const text = encodeURIComponent(`Halo *${selectedClass.teacherName}*,\n\nAnda memiliki jadwal mengajar hari ini pukul *${selectedClass.startTime} WIB* untuk kelas ${selectedClass.className}.`);
-                              window.open(`https://wa.me/${teacher.phone}?text=${text}`, "_blank");
+                              window.open(`https://wa.me/${selectedClass.teacherPhone}?text=${text}`, "_blank");
                             }}
                           >
                             <MessageCircle className="h-3 w-3" /> Ingatkan Tutor
                           </Button>
                         )}
                         <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
-                          <DialogTrigger render={
-                            <Button variant="outline" size="sm" className="h-8 rounded-lg gap-1.5 text-[11px] font-semibold border-primary/20 hover:bg-primary/5 hover:text-primary transition-all">
+                          <DialogTrigger render={(props) => (
+                            <Button {...props} variant="outline" size="sm" className="h-8 rounded-lg gap-1.5 text-[11px] font-semibold border-primary/20 hover:bg-primary/5 hover:text-primary transition-all">
                               <UserPlus className="h-3 w-3" /> Tambah Siswa
                             </Button>
-                          } />
+                          )} />
                           <DialogContent className="sm:max-w-md rounded-2xl">
                             <DialogHeader>
                               <DialogTitle className="font-bold">Tambah Siswa Dadakan</DialogTitle>
@@ -614,7 +662,12 @@ export default function AttendancePage() {
           {/* Records Table */}
           {/* Classes Overview Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredHistory.length === 0 ? (
+            {isHistoryLoading ? (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Memuat riwayat...</p>
+              </div>
+            ) : filteredHistory.length === 0 ? (
               <Card className="col-span-full shadow-sm rounded-xl overflow-hidden py-32 bg-muted/20">
                 <CardContent className="flex flex-col items-center gap-3 opacity-30">
                   <Calendar className="h-16 w-16" />
@@ -622,7 +675,7 @@ export default function AttendancePage() {
                 </CardContent>
               </Card>
             ) : (
-              Object.entries(groupedHistory).map(([className, records]) => {
+              Object.entries(groupedHistory).map(([className, records]: [string, any]) => {
                 const lastSession = records[0];
                 return (
                   <Card key={className} className="shadow-sm hover:shadow-lg transition-all duration-300 rounded-xl overflow-hidden group hover:-translate-y-1">
@@ -759,7 +812,7 @@ export default function AttendancePage() {
                   <div className="p-0">
                     <ScrollArea className="h-[400px]">
                       <div className="divide-y divide-muted/50">
-                        {selectedRecord.studentAttendance.map((sa, idx) => (
+                        {selectedRecord.studentAttendance.map((sa: any, idx: number) => (
                           <div key={idx} className="flex items-center justify-between p-6 px-10 hover:bg-muted/20 transition-colors">
                             <div className="flex items-center gap-5">
                               <div className="text-[11px] font-bold text-muted-foreground bg-muted/80 h-6 w-6 rounded-lg flex items-center justify-center">{idx + 1}</div>

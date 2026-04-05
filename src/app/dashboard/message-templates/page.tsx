@@ -3,23 +3,24 @@
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Save, Info } from "lucide-react";
+import { Save, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getTemplates, updateTemplate } from "./actions";
 
 export default function MessageTemplatesPage() {
   const { user, hasAccess } = useAuth();
   const router = useRouter();
 
-  const [templates, setTemplates] = useState({
-    paymentReminder: "Halo {{bold_start}}{{nama_siswa}}{{bold_end}},{{break_space}}{{break_space}}Jangan lupa pembayaran untuk {{nama_paket_pembayaran}} sebesar {{bold_start}}{{nominal_pembayaran}}{{bold_end}} sebelum tanggal {{bold_start}}{{tanggal_jatuh_tempo}}{{bold_end}}.",
-    overdueReminder: "Peringatan:{{break_space}}{{break_space}}Pembayaran Anda sebesar {{bold_start}}{{nominal_pembayaran}}{{bold_end}} untuk paket {{nama_paket_pembayaran}} telah jatuh tempo sejak {{bold_start}}{{tanggal_jatuh_tempo}}{{bold_end}}.",
-    teachingReminder: "Halo {{bold_start}}{{nama_pengajar}}{{bold_end}},{{break_space}}{{break_space}}Anda memiliki jadwal mengajar hari ini pukul {{bold_start}}{{waktu_mengajar}}{{bold_end}} untuk kelas {{nama_kelas}}."
+  const [templates, setTemplates] = useState<Record<string, { id: string; content: string }>>({
+    payment_reminder: { id: "", content: "" },
+    overdue_reminder: { id: "", content: "" },
+    teaching_reminder: { id: "", content: "" }
   });
-
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -28,17 +29,47 @@ export default function MessageTemplatesPage() {
     }
   }, [hasAccess, router]);
 
+  useEffect(() => {
+    async function loadTemplates() {
+      setIsLoading(true);
+      const { data } = await getTemplates();
+      if (data) {
+        setTemplates(prev => {
+          const next = { ...prev };
+          data.forEach(t => {
+            if (next[t.key] !== undefined) {
+              next[t.key] = { id: t.id, content: t.content };
+            }
+          });
+          return next;
+        });
+      }
+      setIsLoading(false);
+    }
+    loadTemplates();
+  }, []);
+
   if (!user || user.role !== "super_admin") {
-    return null; // Will redirect in useEffect
+    return null; 
   }
 
   const handleSave = async () => {
+    const toUpdate = Object.entries(templates).filter(([_, val]) => val.id);
+    if (toUpdate.length === 0) {
+      toast.error("Tidak ada template yang terhubung ke database untuk disimpan.");
+      return;
+    }
+
     setIsSaving(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      const promises = toUpdate.map(([_, val]) => updateTemplate(val.id, val.content));
+      await Promise.all(promises);
       toast.success("Template pesan berhasil disimpan");
-    }, 1000);
+    } catch (error) {
+      toast.error("Gagal menyimpan template");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const variables = [
@@ -76,12 +107,21 @@ export default function MessageTemplatesPage() {
               <CardDescription>Pesan pengingat sebelum jatuh tempo.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea 
-                placeholder="Halo {{bold_start}}{{nama_siswa}}{{bold_end}},{{break_space}}{{break_space}}Jangan lupa pembayaran untuk {{nama_paket_pembayaran}} sebesar {{bold_start}}{{nominal_pembayaran}}{{bold_end}} sebelum tanggal {{bold_start}}{{tanggal_jatuh_tempo}}{{bold_end}}." 
-                className="min-h-[150px]"
-                value={templates.paymentReminder}
-                onChange={(e) => setTemplates(prev => ({ ...prev, paymentReminder: e.target.value }))}
-              />
+              {isLoading ? (
+                <div className="h-[150px] flex items-center justify-center bg-muted/10 rounded-lg">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
+                </div>
+              ) : (
+                <Textarea 
+                  placeholder="Format pesan pengingat..." 
+                  className="min-h-[150px]"
+                  value={templates.payment_reminder.content}
+                  onChange={(e) => setTemplates(prev => ({ 
+                    ...prev, 
+                    payment_reminder: { ...prev.payment_reminder, content: e.target.value } 
+                  }))}
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -91,12 +131,21 @@ export default function MessageTemplatesPage() {
               <CardDescription>Pesan pengingat setelah lewat jatuh tempo.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea 
-                placeholder="Peringatan:{{break_space}}{{break_space}}Pembayaran Anda sebesar {{bold_start}}{{nominal_pembayaran}}{{bold_end}} untuk paket {{nama_paket_pembayaran}} telah jatuh tempo sejak {{bold_start}}{{tanggal_jatuh_tempo}}{{bold_end}}." 
-                className="min-h-[150px]"
-                value={templates.overdueReminder}
-                onChange={(e) => setTemplates(prev => ({ ...prev, overdueReminder: e.target.value }))}
-              />
+              {isLoading ? (
+                <div className="h-[150px] flex items-center justify-center bg-muted/10 rounded-lg">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
+                </div>
+              ) : (
+                <Textarea 
+                  placeholder="Format pesan jatuh tempo..." 
+                  className="min-h-[150px]"
+                  value={templates.overdue_reminder.content}
+                  onChange={(e) => setTemplates(prev => ({ 
+                    ...prev, 
+                    overdue_reminder: { ...prev.overdue_reminder, content: e.target.value } 
+                  }))}
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -106,17 +155,26 @@ export default function MessageTemplatesPage() {
               <CardDescription>Pesan pengingat jadwal mengajar untuk pengajar.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea 
-                placeholder="Halo {{bold_start}}{{nama_pengajar}}{{bold_end}},{{break_space}}{{break_space}}Anda memiliki jadwal mengajar hari ini pukul {{bold_start}}{{waktu_mengajar}}{{bold_end}} untuk kelas {{nama_kelas}}." 
-                className="min-h-[150px]"
-                value={templates.teachingReminder}
-                onChange={(e) => setTemplates(prev => ({ ...prev, teachingReminder: e.target.value }))}
-              />
+              {isLoading ? (
+                <div className="h-[150px] flex items-center justify-center bg-muted/10 rounded-lg">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
+                </div>
+              ) : (
+                <Textarea 
+                  placeholder="Format pesan pengajar..." 
+                  className="min-h-[150px]"
+                  value={templates.teaching_reminder.content}
+                  onChange={(e) => setTemplates(prev => ({ 
+                    ...prev, 
+                    teaching_reminder: { ...prev.teaching_reminder, content: e.target.value } 
+                  }))}
+                />
+              )}
             </CardContent>
           </Card>
 
           <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving || isLoading}>
               {isSaving ? "Menyimpan..." : (
                 <>
                   <Save className="mr-2 h-4 w-4" />

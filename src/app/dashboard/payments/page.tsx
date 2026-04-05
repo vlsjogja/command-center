@@ -46,12 +46,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Payment, PaymentStatus } from "@/types";
-import { dummyPayments, dummyParticipants, dummyPackages } from "@/lib/dummy-data";
-import { UserPlus } from "lucide-react";
+import { 
+  dummyPayments, 
+  dummyParticipants, 
+  dummyPackages 
+} from "@/lib/dummy-data";
+import { UserPlus, Loader2 } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate, formatDateWithDay, calculateEffectiveStatus } from "@/lib/format";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { getPayments, getSelectorData, addPayment, updatePayment, deletePayment } from "./actions";
+import type { Participant, Package } from "@/types";
 
 type PaymentForm = {
   participantId: string;
@@ -78,7 +84,10 @@ const emptyForm: PaymentForm = {
 };
 
 export default function PaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>(dummyPayments);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [participantsList, setParticipantsList] = useState<Participant[]>([]);
+  const [packagesList, setPackagesList] = useState<Package[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>(new Date().getFullYear().toString());
@@ -99,6 +108,27 @@ export default function PaymentsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
 
+  async function fetchPayments() {
+    setIsLoading(true);
+    const { data, error } = await getPayments();
+    if (data) setPayments(data as unknown as Payment[]);
+    if (error) toast.error("Gagal mengambil data pembayaran: " + error);
+    setIsLoading(false);
+  }
+
+  async function fetchSelectorData() {
+    const { data, error } = await getSelectorData();
+    if (data) {
+      setParticipantsList(data.participants as any);
+      setPackagesList(data.packages as any);
+    }
+  }
+
+  useEffect(() => {
+    fetchPayments();
+    fetchSelectorData();
+  }, []);
+
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
   const months = [
@@ -118,7 +148,7 @@ export default function PaymentsPage() {
   ];
 
   const enhancedPayments = payments.map((p) => {
-    const pkg = dummyPackages.find((c) => c.id === p.classPackageId);
+    const pkg = (p as any).package;
     const { effectiveStatus, nextBillingDate } = calculateEffectiveStatus(
       p.paymentStatus,
       p.billingTime,
@@ -136,7 +166,7 @@ export default function PaymentsPage() {
   const filtered = enhancedPayments.filter((p) => {
     const billingDate = p.nextBillingDate ? new Date(p.nextBillingDate) : null;
     const matchSearch =
-      (dummyParticipants.find((d) => d.id === p.participantId)?.name.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      ((p as any).participant?.name.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       (p.notes?.toLowerCase().includes(search.toLowerCase()) ?? false);
     const matchYear = yearFilter ? billingDate?.getFullYear().toString() === yearFilter : true;
     const matchMonth = monthFilter ? billingDate?.getMonth().toString() === monthFilter : true;
@@ -191,46 +221,44 @@ export default function PaymentsPage() {
     return `pay-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!form.participantId || !form.classPackageId) {
       toast.error("Siswa dan paket pembayaran wajib dipilih.");
       return;
     }
-    const newPayment: Payment = {
-      ...form,
-      id: generateId(),
-      paymentMethod: "manual_transfer",
-      paymentTime: form.paymentTime || null,
-      createdAt: new Date().toISOString(),
-    };
-    setPayments((prev) => [newPayment, ...prev]);
-    setForm(emptyForm);
-    setParticipantSearch("");
-    setParticipantVisibleCount(5);
-    setIsAddOpen(false);
-    toast.success("Data pembayaran berhasil ditambahkan.");
+
+    toast.promise(addPayment(form), {
+      loading: "Menambahkan data pembayaran...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchPayments();
+        setForm(emptyForm);
+        setParticipantSearch("");
+        setParticipantVisibleCount(5);
+        setIsAddOpen(false);
+        return "Data pembayaran berhasil ditambahkan.";
+      },
+      error: (err) => err.message
+    });
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!editingId) return;
-    setPayments((prev) =>
-      prev.map((p) =>
-        p.id === editingId
-          ? {
-              ...p,
-              ...form,
-              paymentMethod: "manual_transfer" as const,
-              paymentTime: form.paymentTime || null,
-            }
-          : p
-      )
-    );
-    setIsEditOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
-    setParticipantSearch("");
-    setParticipantVisibleCount(5);
-    toast.success("Data pembayaran berhasil diperbarui.");
+
+    toast.promise(updatePayment(editingId, form), {
+      loading: "Memperbarui data pembayaran...",
+      success: ({ error }) => {
+        if (error) throw new Error(error);
+        fetchPayments();
+        setIsEditOpen(false);
+        setEditingId(null);
+        setForm(emptyForm);
+        setParticipantSearch("");
+        setParticipantVisibleCount(5);
+        return "Data pembayaran berhasil diperbarui.";
+      },
+      error: (err) => err.message
+    });
   }
 
   function initiateDelete(id: string, participantName: string) {
@@ -238,12 +266,19 @@ export default function PaymentsPage() {
     setDeleteConfirmOpen(true);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (itemToDelete) {
-      setPayments((prev) => prev.filter((p) => p.id !== itemToDelete.id));
-      toast.success("Data pembayaran berhasil dihapus.");
-      setDeleteConfirmOpen(false);
-      setItemToDelete(null);
+      toast.promise(deletePayment(itemToDelete.id), {
+        loading: "Menghapus data pembayaran...",
+        success: ({ error }) => {
+          if (error) throw new Error(error);
+          fetchPayments();
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+          return "Data pembayaran berhasil dihapus.";
+        },
+        error: (err) => err.message
+      });
     }
   }
   function openEdit(payment: Payment) {
@@ -321,7 +356,7 @@ export default function PaymentsPage() {
             onClick={() => setIsSiswaSelectOpen(true)}
           >
             {form.participantId ? (
-              <span className="truncate">{dummyParticipants.find(p => p.id === form.participantId)?.name}</span>
+              <span className="truncate">{participantsList.find(p => p.id === form.participantId)?.name}</span>
             ) : (
               <span className="text-muted-foreground">Pilih siswa...</span>
             )}
@@ -335,7 +370,7 @@ export default function PaymentsPage() {
             onClick={() => setIsPackageSelectOpen(true)}
           >
             {form.classPackageId ? (
-              <span className="truncate">{dummyPackages.find(p => p.id === form.classPackageId)?.nama}</span>
+              <span className="truncate">{packagesList.find(p => p.id === form.classPackageId)?.nama}</span>
             ) : (
               <span className="text-muted-foreground">Pilih paket...</span>
             )}
@@ -426,14 +461,23 @@ export default function PaymentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedList.length === 0 ? (
+                {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Tidak ada data.</TableCell>
+                    <TableCell colSpan={5} className="text-center py-20">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+                        <p className="text-sm font-medium text-muted-foreground">Memuat data pembayaran...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : paginatedList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Tidak ada data.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedList.map((payment) => {
-                    const participant = dummyParticipants.find((p) => p.id === payment.participantId);
-                    const pkg = dummyPackages.find((c) => c.id === payment.classPackageId);
+                    const participant = (payment as any).participant;
+                    const pkg = (payment as any).package;
                     return (
                       <TableRow key={payment.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell className="font-medium">{participant?.name ?? "—"}</TableCell>
@@ -463,7 +507,7 @@ export default function PaymentsPage() {
                         )}
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            {activeTab === "belumBayar" && (
+                            {(activeTab === "belumBayar" || activeTab === "jatuhTempo") && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -471,26 +515,11 @@ export default function PaymentsPage() {
                                 onClick={() => {
                                   if (!participant?.phone) return toast.error("Nomor telepon peserta tidak tersedia");
                                   const targetDate = payment.nextBillingDate ?? payment.billingTime;
-                                  const text = encodeURIComponent(`Halo *${participant.name}*,\n\nJangan lupa untuk melakukan pembayaran paket ${pkg?.nama || ''} sebesar *${formatCurrency(payment.amount)}* sebelum tanggal *${formatDateWithDay(targetDate as string)}*.`);
+                                  const messagePrefix = activeTab === "belumBayar" ? "Jangan lupa untuk melakukan pembayaran" : "Peringatan:\n\nPembayaran Anda telah jatuh tempo sejak";
+                                  const text = encodeURIComponent(`Halo *${participant.name}*,\n\n${messagePrefix} paket ${pkg?.nama || ''} sebesar *${formatCurrency(payment.amount)}* sebelum tanggal *${formatDateWithDay(targetDate as string)}*.`);
                                   window.open(`https://wa.me/${participant.phone}?text=${text}`, "_blank");
                                 }}
                                 title="Reminder Pembayaran"
-                              >
-                                <MessageCircle className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {activeTab === "jatuhTempo" && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-lg hover:bg-success/10 hover:text-success"
-                                onClick={() => {
-                                  if (!participant?.phone) return toast.error("Nomor telepon peserta tidak tersedia");
-                                  const targetDate = payment.nextBillingDate ?? payment.billingTime;
-                                  const text = encodeURIComponent(`Peringatan:\n\nPembayaran Anda sebesar *${formatCurrency(payment.amount)}* untuk paket ${pkg?.nama || ''} telah jatuh tempo sejak *${formatDateWithDay(targetDate as string)}*.`);
-                                  window.open(`https://wa.me/${participant.phone}?text=${text}`, "_blank");
-                                }}
-                                title="Reminder Pembayaran Jatuh Tempo"
                               >
                                 <MessageCircle className="h-4 w-4" />
                               </Button>
@@ -697,7 +726,7 @@ export default function PaymentsPage() {
               
               <div className="flex-grow overflow-y-auto space-y-2 pr-2">
                 {(() => {
-                  const filteredParticipants = dummyParticipants.filter(p => 
+                  const filteredParticipants = participantsList.filter(p => 
                     p.name.toLowerCase().includes(participantSearch.toLowerCase()) || 
                     p.email.toLowerCase().includes(participantSearch.toLowerCase())
                   );
@@ -777,7 +806,7 @@ export default function PaymentsPage() {
               
               <div className="flex-grow overflow-y-auto space-y-2 pr-2">
                 {(() => {
-                  const filteredPackages = dummyPackages.filter(p => 
+                  const filteredPackages = packagesList.filter(p => 
                     p.nama.toLowerCase().includes(packageSearch.toLowerCase())
                   );
                   const visiblePackages = filteredPackages.slice(0, packageVisibleCount);

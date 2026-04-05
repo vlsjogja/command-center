@@ -45,11 +45,22 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ClassPackage, ParticipantClass } from "@/types";
-import { dummyClassPackages, dummyParticipantClasses, dummyParticipants } from "@/lib/dummy-data";
 import { formatCurrency } from "@/lib/format";
 import { DeleteConfirmDialog } from "@/components/dashboard/delete-confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { 
+  getClassPackages, 
+  getParticipants, 
+  addClassPackage, 
+  updateClassPackage, 
+  deleteClassPackage, 
+  assignParticipant, 
+  removeAssignment, 
+  moveAssignment 
+} from "./actions";
+import { Loader2 } from "lucide-react";
+import type { Participant } from "@/types";
 
 type PackageForm = Omit<ClassPackage, "id" | "createdAt"> & {
   durationValue: string;
@@ -65,8 +76,9 @@ const emptyForm: PackageForm = {
 };
 
 export default function ClassesPage() {
-  const [packages, setPackages] = useState<ClassPackage[]>(dummyClassPackages);
-  const [assignments, setAssignments] = useState<ParticipantClass[]>(dummyParticipantClasses);
+  const [packages, setPackages] = useState<ClassPackage[]>([]);
+  const [participantsList, setParticipantsList] = useState<Participant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -83,6 +95,24 @@ export default function ClassesPage() {
   const [form, setForm] = useState<PackageForm>(emptyForm);
   const [assignSearch, setAssignSearch] = useState("");
   const [assignVisibleCount, setAssignVisibleCount] = useState(5);
+
+  async function fetchClasses() {
+    setIsLoading(true);
+    const { data, error } = await getClassPackages();
+    if (data) setPackages(data as any);
+    if (error) toast.error("Gagal mengambil data kelas: " + error);
+    setIsLoading(false);
+  }
+
+  async function fetchParticipants() {
+    const { data, error } = await getParticipants();
+    if (data) setParticipantsList(data as any);
+  }
+
+  useEffect(() => {
+    fetchClasses();
+    fetchParticipants();
+  }, []);
 
   // Delete Confirm State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -110,37 +140,49 @@ export default function ClassesPage() {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!form.name) { toast.error("Nama paket wajib diisi."); return; }
-    const newPkg: ClassPackage = { 
+    
+    const { error } = await addClassPackage({
       name: form.name,
       description: form.description,
       learningDuration: `${form.durationValue} ${form.durationUnit}`,
-      id: generateId("cls"), 
-      createdAt: new Date().toISOString() 
-    };
-    setPackages((prev) => [newPkg, ...prev]);
-    setForm(emptyForm);
-    setIsAddOpen(false);
-    toast.success("Kelas berhasil ditambahkan.");
+    });
+
+    if (!error) {
+      fetchClasses();
+      setForm(emptyForm);
+      setIsAddOpen(false);
+      toast.success("Kelas berhasil ditambahkan.");
+    } else {
+      toast.error("Gagal menambah kelas: " + error);
+    }
   }
 
-  function handleEdit() {
+  async function handleEdit() {
     if (!editingId || !form.name) return;
-    setPackages((prev) => prev.map((p) => (p.id === editingId ? { 
-      ...p, 
+    
+    const { error } = await updateClassPackage(editingId, {
       name: form.name,
       description: form.description,
       learningDuration: `${form.durationValue} ${form.durationUnit}`,
-    } : p)));
-    setIsEditOpen(false);
-    setEditingId(null);
-    setForm(emptyForm);
-    toast.success("Kelas berhasil diperbarui.");
+    });
+
+    if (!error) {
+      fetchClasses();
+      setIsEditOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      toast.success("Kelas berhasil diperbarui.");
+    } else {
+      toast.error("Gagal memperbarui kelas: " + error);
+    }
   }
 
   function initiateDelete(id: string, name: string) {
-    const assignedCount = assignments.filter((a) => a.classPackageId === id).length;
+    const pkg = packages.find((p) => p.id === id);
+    const assignedCount = (pkg as any)?.enrollments?.length ?? 0;
+    
     if (assignedCount > 0) {
       toast.error("Hapus semua peserta terlebih dahulu sebelum menghapus kelas.");
       return;
@@ -154,16 +196,25 @@ export default function ClassesPage() {
     setDeleteConfirmOpen(true);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!itemToDelete) return;
 
     if (itemToDelete.type === "class") {
-      setPackages((prev) => prev.filter((p) => p.id !== itemToDelete.id));
-      setAssignments((prev) => prev.filter((a) => a.classPackageId !== itemToDelete.id));
-      toast.success(`Kelas ${itemToDelete.name} berhasil dihapus.`);
+      const { error } = await deleteClassPackage(itemToDelete.id);
+      if (!error) {
+        fetchClasses();
+        toast.success(`Kelas ${itemToDelete.name} berhasil dihapus.`);
+      } else {
+        toast.error("Gagal menghapus kelas: " + error);
+      }
     } else {
-      setAssignments((prev) => prev.filter((a) => a.id !== itemToDelete.id));
-      toast.success(`Siswa ${itemToDelete.name} berhasil dihapus dari kelas.`);
+      const { error } = await removeAssignment(itemToDelete.id);
+      if (!error) {
+        fetchClasses();
+        toast.success(`Siswa ${itemToDelete.name} berhasil dihapus dari kelas.`);
+      } else {
+        toast.error("Gagal menghapus siswa dari kelas: " + error);
+      }
     }
 
     setDeleteConfirmOpen(false);
@@ -198,25 +249,22 @@ export default function ClassesPage() {
     setIsViewOpen(true);
   }
 
-  function handleAssign() {
+  async function handleAssign() {
     if (!assigningPkgId || !selectedParticipant) { toast.error("Pilih siswa terlebih dahulu."); return; }
-    const exists = assignments.some(a => a.classPackageId === assigningPkgId && a.participantId === selectedParticipant);
-    if (exists) { toast.error("Siswa sudah terdaftar di kelas ini."); return; }
-    const newAssignment: ParticipantClass = {
-      id: generateId("pc"),
-      participantId: selectedParticipant,
-      classPackageId: assigningPkgId,
-      enrolledAt: new Date().toISOString(),
-    };
-    setAssignments((prev) => [newAssignment, ...prev]);
-    setIsAssignOpen(false);
-    toast.success("Siswa berhasil didaftarkan ke kelas.");
+    
+    const { error } = await assignParticipant(assigningPkgId, selectedParticipant);
+    if (!error) {
+      fetchClasses();
+      setIsAssignOpen(false);
+      toast.success("Siswa berhasil didaftarkan ke kelas.");
+    } else {
+      toast.error("Gagal mendaftarkan siswa: " + error);
+    }
   }
 
   // Logic moved to confirmDelete
   function handleRemoveAssignment(id: string) {
-    setAssignments((prev) => prev.filter((a) => a.id !== id));
-    toast.success("Siswa berhasil dihapus dari kelas.");
+    // This is now handled in confirmDelete
   }
 
   function openMove(assignmentId: string) {
@@ -225,43 +273,29 @@ export default function ClassesPage() {
     setIsMoveOpen(true);
   }
 
-  function handleMoveClass() {
+  async function handleMoveClass() {
     if (!movingAssignmentId || !targetClassId) { toast.error("Pilih kelas tujuan terlebih dahulu."); return; }
     
-    const assignment = assignments.find(a => a.id === movingAssignmentId);
-    if (!assignment) return;
-
-    if (assignment.classPackageId === targetClassId) {
-      toast.error("Kelas tujuan sama dengan kelas saat ini.");
-      return;
+    const { error } = await moveAssignment(movingAssignmentId, targetClassId);
+    if (!error) {
+      await fetchClasses();
+      setIsMoveOpen(false);
+      setMovingAssignmentId(null);
+      setTargetClassId("");
+      toast.success("Siswa berhasil dipindahkan kelas.");
+    } else {
+      toast.error("Gagal memindahkan siswa: " + error);
     }
-
-    const alreadyInTarget = assignments.find(
-      (a) => a.participantId === assignment.participantId && a.classPackageId === targetClassId
-    );
-    if (alreadyInTarget) {
-      toast.error("Siswa sudah terdaftar di kelas tujuan.");
-      return;
-    }
-
-    setAssignments(prev => prev.map(a => a.id === movingAssignmentId ? { ...a, classPackageId: targetClassId } : a));
-    setIsMoveOpen(false);
-    setMovingAssignmentId(null);
-    setTargetClassId("");
-    toast.success("Siswa berhasil dipindahkan kelas.");
   }
 
-  const getAssignedParticipants = (pkgId: string) =>
-    assignments
-      .filter((a) => a.classPackageId === pkgId)
-      .map((a) => ({
-        ...a,
-        participant: dummyParticipants.find((p) => p.id === a.participantId),
-      }));
+  const getAssignedParticipants = (pkgId: string) => {
+    const pkg = packages.find((p) => p.id === pkgId);
+    return ((pkg as any)?.enrollments as any[]) || [];
+  };
 
   const viewingPkg = packages.find((p) => p.id === viewingPkgId);
   const viewingParticipants = (viewingPkgId ? getAssignedParticipants(viewingPkgId) : []).filter(
-    (a) => a.participant?.name.toLowerCase().includes(viewSearch.toLowerCase())
+    (a: any) => a.participant?.name.toLowerCase().includes(viewSearch.toLowerCase())
   );
 
   return (
@@ -333,12 +367,18 @@ export default function ClassesPage() {
         </div>
 
         {/* Class Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {paginatedData.map((pkg) => {
-            const assignedCount = assignments.filter((a) => a.classPackageId === pkg.id).length;
-            return (
-              <Card key={pkg.id} className="shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                <CardHeader className="pb-3 border-b bg-muted/10">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-card rounded-2xl border border-dashed">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+            <p className="text-sm font-medium text-muted-foreground">Memuat daftar kelas...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {paginatedData.map((pkg) => {
+              const assignedCount = (pkg as any)?.enrollments?.length ?? 0;
+              return (
+                <Card key={pkg.id} className="shadow-sm hover:shadow-md transition-shadow flex flex-col">
+                  <CardHeader className="pb-3 border-b bg-muted/10">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <CardTitle className="text-lg font-bold text-primary">{pkg.name}</CardTitle>
@@ -378,9 +418,10 @@ export default function ClassesPage() {
               </Card>
             );
           })}
-        </div>
+          </div>
+        )}
 
-        {totalItems > 0 && (
+        {!isLoading && totalItems > 0 && (
           <PaginationControls
             currentPage={currentPage}
             totalPages={totalPages}
@@ -459,7 +500,7 @@ export default function ClassesPage() {
               
               <div className="flex-grow overflow-y-auto space-y-2 pr-2">
                 {(() => {
-                  const filteredParticipants = dummyParticipants.filter(p => 
+                  const filteredParticipants = participantsList.filter(p => 
                     p.name.toLowerCase().includes(assignSearch.toLowerCase()) || 
                     p.email.toLowerCase().includes(assignSearch.toLowerCase())
                   );
@@ -477,7 +518,8 @@ export default function ClassesPage() {
                     <>
                       {visibleParticipants.map((p) => {
                         const isSelected = selectedParticipant === p.id;
-                        const isAlreadyInClass = assignments.find(a => a.participantId === p.id && a.classPackageId === assigningPkgId);
+                        const currentPkg = packages.find(pkg => pkg.id === assigningPkgId);
+                        const isAlreadyInClass = (currentPkg as any)?.enrollments?.some((a: any) => a.participantId === p.id);
                         
                         return (
                           <div 
@@ -565,7 +607,7 @@ export default function ClassesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {viewingParticipants.map((a) => (
+                      {viewingParticipants.map((a: any) => (
                         <TableRow key={a.id} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm">{a.participant?.name ?? "—"}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">{a.participant?.email ?? "—"}</TableCell>
@@ -614,7 +656,7 @@ export default function ClassesPage() {
                 <ArrowRightLeft className="h-5 w-5 text-primary" /> Pindahkan Kelas
               </DialogTitle>
               <DialogDescription>
-                Pindahkan <strong>{assignments.find(a => a.id === movingAssignmentId)?.participantId ? dummyParticipants.find(p => p.id === assignments.find(a => a.id === movingAssignmentId)?.participantId)?.name : "Siswa"}</strong> ke kelas lain.
+                Pindahkan <strong>{(viewingParticipants.find((a: any) => a.id === movingAssignmentId) as any)?.participant?.name || "Siswa"}</strong> ke kelas lain.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -625,7 +667,7 @@ export default function ClassesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {packages
-                    .filter(p => p.id !== assignments.find(a => a.id === movingAssignmentId)?.classPackageId)
+                    .filter(p => p.id !== (viewingParticipants.find((a: any) => a.id === movingAssignmentId) as any)?.classPackageId)
                     .map((pkg) => (
                       <SelectItem key={pkg.id} value={pkg.id}>
                         {pkg.name}
