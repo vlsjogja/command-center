@@ -7,6 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -33,6 +41,8 @@ import {
   Filter,
   CheckCircle2,
   Loader2,
+  ChevronsUpDown,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
@@ -325,6 +335,11 @@ export default function DatabasePage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const [filterRange, setFilterRange] = useState({ start: "", end: "" });
+  const [filterPackage, setFilterPackage] = useState<string>("all");
+  const [isPackageSelectOpen, setIsPackageSelectOpen] = useState(false);
+  const [packageSearch, setPackageSearch] = useState("");
+  const [packageVisibleCount, setPackageVisibleCount] = useState(5);
+
   
   const [dbStats, setDbStats] = useState<Record<string, number>>({});
   const [backupData, setBackupData] = useState<any[]>([]);
@@ -378,6 +393,17 @@ export default function DatabasePage() {
     }));
   }, [dbStats]);
 
+  const availablePackages = useMemo(() => {
+    if (backupSource !== "payments") return [];
+    const pkgs = new Map<string, string>();
+    backupData.forEach(item => {
+      if (item.package) {
+        pkgs.set(item.package.id, item.package.nama);
+      }
+    });
+    return Array.from(pkgs.entries()).map(([id, nama]) => ({ id, nama }));
+  }, [backupData, backupSource]);
+
   // Filtered data for backup
   const filteredBackupData = useMemo(() => {
     function getDateStr(item: any): string {
@@ -388,6 +414,10 @@ export default function DatabasePage() {
     }
 
     return backupData.filter((item) => {
+      if (backupSource === "payments" && filterPackage !== "all") {
+        if (item.package?.nama !== filterPackage) return false;
+      }
+
       const dateStr = getDateStr(item);
       if (!dateStr) return true;
       const itemDate = new Date(dateStr);
@@ -405,7 +435,7 @@ export default function DatabasePage() {
         return true;
       }
     });
-  }, [backupData, backupSource, filterMode, filterMonth, filterRange]);
+  }, [backupData, backupSource, filterMode, filterMonth, filterRange, filterPackage]);
 
   function handleExportCsv() {
     if (filteredBackupData.length === 0) {
@@ -822,14 +852,30 @@ export default function DatabasePage() {
                       )}
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={handleExportCsv}
-                    disabled={filteredBackupData.length === 0}
-                    className="gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export CSV
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    {backupSource === "payments" && availablePackages.length > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsPackageSelectOpen(true)}
+                        className="w-[200px] h-9 justify-between font-normal shadow-sm border border-input bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <span className="truncate">
+                          {filterPackage === "all"
+                            ? "Semua Paket"
+                            : availablePackages.find((pkg) => pkg.nama === filterPackage)?.nama || "Pilih paket..."}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    )}
+                    <Button
+                      onClick={handleExportCsv}
+                      disabled={filteredBackupData.length === 0}
+                      className="gap-2 h-9"
+                    >
+                      <Download className="h-4 w-4" />
+                      Export CSV
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -849,6 +895,7 @@ export default function DatabasePage() {
                             <>
                               <TableHead className="font-semibold text-xs">ID</TableHead>
                               <TableHead className="font-semibold text-xs">Peserta</TableHead>
+                              <TableHead className="font-semibold text-xs">Paket Pembayaran</TableHead>
                               <TableHead className="font-semibold text-xs">Nominal</TableHead>
                               <TableHead className="font-semibold text-xs">Status</TableHead>
                               <TableHead className="font-semibold text-xs">Tanggal</TableHead>
@@ -881,6 +928,11 @@ export default function DatabasePage() {
                                 <TableCell className="text-xs font-mono">{String(row.id).slice(0, 8)}...</TableCell>
                                 <TableCell className="text-xs">
                                   {row.participant?.name || String(row.participantId)}
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  <Badge variant="secondary" className="font-medium whitespace-nowrap">
+                                    {row.package?.nama || "Tidak Ditemukan"}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell className="text-xs">
                                   Rp {Number(row.amount).toLocaleString("id-ID")}
@@ -961,6 +1013,97 @@ export default function DatabasePage() {
             </Card>
           </div>
         )}
+
+        {/* Paket Selection Dialog */}
+        <Dialog open={isPackageSelectOpen} onOpenChange={setIsPackageSelectOpen}>
+          <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Filter className="h-5 w-5 text-primary" /> Pilih Paket Pembayaran</DialogTitle>
+              <DialogDescription>Cari dan pilih paket pembayaran untuk difilter.</DialogDescription>
+            </DialogHeader>
+            <div className="py-2 space-y-4 flex flex-col overflow-hidden">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Cari nama paket..." 
+                  className="pl-9 bg-card border-border/60 shadow-none focus-visible:ring-0" 
+                  value={packageSearch} 
+                  onChange={(e) => {
+                    setPackageSearch(e.target.value);
+                    setPackageVisibleCount(5);
+                  }} 
+                />
+              </div>
+              
+              <div className="flex-grow overflow-y-auto space-y-2 pr-2">
+                {(() => {
+                  const filteredPackages = availablePackages.filter(p => 
+                    p.nama.toLowerCase().includes(packageSearch.toLowerCase())
+                  );
+                  const visiblePackages = filteredPackages.slice(0, packageVisibleCount);
+                  
+                  return (
+                    <>
+                      <div 
+                        onClick={() => {
+                          setFilterPackage("all");
+                          setIsPackageSelectOpen(false);
+                        }}
+                        className={`
+                          flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer
+                          ${filterPackage === "all" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"}
+                        `}
+                      >
+                        <div className="space-y-0.5">
+                          <p className="font-medium text-sm">Semua Paket</p>
+                        </div>
+                        {filterPackage === "all" && <Badge className="bg-primary hover:bg-primary text-[10px]">Terpilih</Badge>}
+                      </div>
+                      
+                      {visiblePackages.map((p) => {
+                        const isSelected = filterPackage === p.nama;
+                        
+                        return (
+                          <div 
+                            key={p.id} 
+                            onClick={() => {
+                              setFilterPackage(p.nama === filterPackage ? "all" : p.nama);
+                              setIsPackageSelectOpen(false);
+                            }}
+                            className={`
+                              flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer
+                              ${isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"}
+                            `}
+                          >
+                            <div className="space-y-0.5">
+                              <p className="font-medium text-sm">{p.nama}</p>
+                            </div>
+                            {isSelected && <Badge className="bg-primary hover:bg-primary text-[10px]">Terpilih</Badge>}
+                          </div>
+                        );
+                      })}
+
+                      {visiblePackages.length === 0 && filteredPackages.length === 0 && (
+                        <div className="text-center py-8 text-muted-foreground text-sm">
+                          Paket tidak ditemukan.
+                        </div>
+                      )}
+                      
+                      {filteredPackages.length > packageVisibleCount && (
+                        <button 
+                          onClick={() => setPackageVisibleCount(prev => prev + 10)}
+                          className="w-full py-3 text-xs text-primary font-medium hover:underline transition-all"
+                        >
+                          Load More (+10 Paket)
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </RoleGuard>
   );
