@@ -141,7 +141,7 @@ export const payments = pgTable("payments", {
 
 export const teachers = pgTable("teachers", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+  userId: uuid("user_id").references((): AnyPgColumn => users.id, { onDelete: "set null" }).unique(),
   name: text("name").notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),
   assignedClasses: text("assigned_classes").notNull(),

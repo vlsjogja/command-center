@@ -29,6 +29,16 @@ export async function createTeacher(data: {
   schedule: string;
 }) {
   try {
+    // Check if user already has a teacher profile
+    if (data.userId) {
+      const existing = await db.query.teachers.findFirst({
+        where: eq(teachers.userId, data.userId),
+      });
+      if (existing) {
+        return { data: null, error: "Akun ini sudah memiliki profil pengajar." };
+      }
+    }
+
     const id = crypto.randomUUID();
     const [teacher] = await db.insert(teachers).values({
       id,
@@ -66,6 +76,16 @@ export async function updateTeacher(id: string, data: {
     const oldTeacher = await db.query.teachers.findFirst({
       where: eq(teachers.id, id),
     });
+
+    // Check if new userId already has a teacher profile
+    if (data.userId && data.userId !== oldTeacher?.userId) {
+      const existing = await db.query.teachers.findFirst({
+        where: eq(teachers.userId, data.userId),
+      });
+      if (existing) {
+        return { data: null, error: "Akun ini sudah memiliki profil pengajar." };
+      }
+    }
 
     const [teacher] = await db
       .update(teachers)

@@ -48,3 +48,9 @@ next-env.d.ts
 
 # credentials
 akun.md
+
+# sensitive db and test scripts
+src/db/seed.ts
+check-db.ts
+test-dashboard.ts
+src/db/enable-rls.ts

@@ -206,9 +206,6 @@ export default function PaymentsPage() {
 
   const statusGroups = {
     belumBayar: filtered.filter((p) => {
-      const pkg = (p as any).package;
-      if (pkg?.type !== "subscription") return false;
-      
       const billingDate = p.nextBillingDate ? new Date(p.nextBillingDate) : null;
       const matchesBillingMonth = monthFilter ? billingDate?.getMonth().toString() === monthFilter : true;
       const matchesBillingYear = yearFilter ? billingDate?.getFullYear().toString() === yearFilter : true;
@@ -217,8 +214,12 @@ export default function PaymentsPage() {
       if (p.effectiveStatus === "pending" && matchesBillingMonth && matchesBillingYear) return true;
       
       // Case 2: Paid early (Success but we are looking at the billing month)
+      // Hanya berlaku untuk package bertipe 'subscription'
+      const pkg = (p as any).package;
+      const isSubscription = pkg?.type === "subscription";
       const isPaidEarly = p.paymentStatus === "success" && p.paymentTime && new Date(p.billingTime) > new Date(p.paymentTime);
-      if (isPaidEarly && matchesBillingMonth && matchesBillingYear) return true;
+      
+      if (isSubscription && isPaidEarly && matchesBillingMonth && matchesBillingYear) return true;
       
       return false;
     }),
@@ -534,6 +535,14 @@ export default function PaymentsPage() {
                       <TableRow key={payment.id} className="hover:bg-muted/50 transition-colors">
                         <TableCell className="font-medium">{participant?.name ?? "—"}</TableCell>
                         <TableCell className="text-muted-foreground max-w-[150px] truncate">{pkg?.nama ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant={statusConfig[(payment as any).effectiveStatus as PaymentStatus]?.variant || "default"} className={statusConfig[(payment as any).effectiveStatus as PaymentStatus]?.className}>
+                            <span className="flex items-center gap-1">
+                              {statusConfig[(payment as any).effectiveStatus as PaymentStatus]?.icon}
+                              {statusConfig[(payment as any).effectiveStatus as PaymentStatus]?.label || (payment as any).effectiveStatus}
+                            </span>
+                          </Badge>
+                        </TableCell>
                         <TableCell className="font-semibold">{formatCurrency(payment.amount)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap hidden md:table-cell">
                           {formatDate(payment.nextBillingDate ?? payment.billingTime)}
@@ -734,6 +743,7 @@ export default function PaymentsPage() {
         {activeTab === "belumBayar" && renderPaymentTable("Belum Bayar", <Clock className="h-5 w-5" />, <>
           <TableHead className="font-semibold">Peserta</TableHead>
           <TableHead className="font-semibold">Paket Pembayaran</TableHead>
+          <TableHead className="font-semibold">Status</TableHead>
           <TableHead className="font-semibold">Jumlah</TableHead>
           <TableHead className="font-semibold hidden md:table-cell">Jatuh Tempo</TableHead>
           <TableHead className="font-semibold text-right">Aksi</TableHead>
@@ -742,6 +752,7 @@ export default function PaymentsPage() {
         {activeTab === "jatuhTempo" && renderPaymentTable("Jatuh Tempo", <AlertTriangle className="h-5 w-5" />, <>
           <TableHead className="font-semibold">Peserta</TableHead>
           <TableHead className="font-semibold">Paket Pembayaran</TableHead>
+          <TableHead className="font-semibold">Status</TableHead>
           <TableHead className="font-semibold">Jumlah</TableHead>
           <TableHead className="font-semibold hidden md:table-cell">Waktu Tagihan</TableHead>
           <TableHead className="font-semibold text-right">Aksi</TableHead>
@@ -750,6 +761,7 @@ export default function PaymentsPage() {
         {activeTab === "lunas" && renderPaymentTable("Lunas", <CheckCircle2 className="h-5 w-5" />, <>
           <TableHead className="font-semibold">Peserta</TableHead>
           <TableHead className="font-semibold">Paket Pembayaran</TableHead>
+          <TableHead className="font-semibold">Status</TableHead>
           <TableHead className="font-semibold">Jumlah</TableHead>
           <TableHead className="font-semibold hidden md:table-cell">Waktu Tagihan</TableHead>
           <TableHead className="font-semibold hidden lg:table-cell">Waktu Bayar</TableHead>

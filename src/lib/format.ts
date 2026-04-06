@@ -51,14 +51,22 @@ export function calculateEffectiveStatus(
   const targetDate = new Date(billingTime);
   const now = new Date();
 
-  // If status is success or pending, check if it's actually overdue relative to now
+  // If status is already success or failed, don't change it to overdue or pending
+  if (paymentStatus === "success" || paymentStatus === "failed") {
+    return {
+      effectiveStatus: paymentStatus,
+      nextBillingDate: targetDate.toISOString()
+    };
+  }
+
+  // If status is pending, check if it's actually overdue relative to now
   if (billingTime) {
     const warningDate = new Date(targetDate);
     warningDate.setDate(warningDate.getDate() - 7);
 
     if (now > targetDate) {
       effectiveStatus = "overdue";
-    } else if (now >= warningDate && paymentStatus !== "success") {
+    } else if (now >= warningDate) {
       effectiveStatus = "pending";
     }
   }
