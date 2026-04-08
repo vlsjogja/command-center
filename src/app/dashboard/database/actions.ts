@@ -15,7 +15,7 @@ import {
   activityLogs, 
   messageTemplates 
 } from "@/db/schema";
-import { count, desc } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 
 export async function getDatabaseStats() {
   try {
@@ -77,6 +77,21 @@ export async function getBackupData(sourceId: string) {
         },
         orderBy: [desc(attendanceRecords.date)],
       });
+    } else if (sourceId === "student_attendance") {
+      data = await db
+        .select({
+          id: studentAttendance.id,
+          attendanceRecordId: studentAttendance.attendanceRecordId,
+          studentId: studentAttendance.studentId,
+          studentName: studentAttendance.studentName,
+          status: studentAttendance.status,
+          date: attendanceRecords.date,
+          className: attendanceRecords.className,
+          teacherName: attendanceRecords.teacherName,
+        })
+        .from(studentAttendance)
+        .innerJoin(attendanceRecords, eq(studentAttendance.attendanceRecordId, attendanceRecords.id))
+        .orderBy(desc(attendanceRecords.date));
     } else if (sourceId === "activity_logs") {
       data = await db.query.activityLogs.findMany({
         orderBy: [desc(activityLogs.timestamp)],
@@ -87,6 +102,31 @@ export async function getBackupData(sourceId: string) {
     return { data, error: null };
   } catch (error: any) {
     console.error(`Error fetching backup data for ${sourceId}:`, error);
+    return { data: [], error: error.message };
+  }
+}
+
+export async function getParticipants() {
+  try {
+    const data = await db.query.participants.findMany({
+      where: eq(participants.status, "active"),
+      orderBy: [desc(participants.name)],
+    });
+    return { data, error: null };
+  } catch (error: any) {
+    console.error("Error fetching participants:", error);
+    return { data: [], error: error.message };
+  }
+}
+
+export async function getClasses() {
+  try {
+    const data = await db.query.classPackages.findMany({
+      orderBy: [desc(classPackages.name)],
+    });
+    return { data, error: null };
+  } catch (error: any) {
+    console.error("Error fetching classes:", error);
     return { data: [], error: error.message };
   }
 }

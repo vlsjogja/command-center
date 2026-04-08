@@ -14,6 +14,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -43,13 +44,19 @@ import {
   Loader2,
   ChevronsUpDown,
   Search,
+  UserSearch,
+  UserPlus,
+  X,
+  UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import { 
   getDatabaseStats, 
   getBackupData, 
-  getTablePreview 
+  getTablePreview,
+  getParticipants,
+  getClasses
 } from "./actions";
 import { 
   type User, 
@@ -292,9 +299,16 @@ const backupSources: BackupSource[] = [
   },
   {
     id: "attendance_records",
-    label: "Presensi",
+    label: "Presensi Pelajaran",
     description: "Catatan kehadiran kelas (master)",
     icon: <CalendarDays className="h-5 w-5" />,
+    dateField: "date",
+  },
+  {
+    id: "student_attendance",
+    label: "Presensi siswa",
+    description: "Log kehadiran individu peserta didik",
+    icon: <UserCheck className="h-5 w-5" />,
     dateField: "date",
   },
   {
@@ -340,6 +354,19 @@ export default function DatabasePage() {
   const [packageSearch, setPackageSearch] = useState("");
   const [packageVisibleCount, setPackageVisibleCount] = useState(5);
 
+  // Student & Class filter state
+  const [participantsList, setParticipantsList] = useState<Participant[]>([]);
+  const [classList, setClassList] = useState<any[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [selectedStudentName, setSelectedStudentName] = useState<string>("");
+  const [filterClass, setFilterClass] = useState<string>("all");
+  const [isClassSearchOpen, setIsClassSearchOpen] = useState(false);
+  const [classSearchQuery, setClassSearchQuery] = useState("");
+  const [classVisibleCount, setClassVisibleCount] = useState(10);
+  const [isStudentSearchOpen, setIsStudentSearchOpen] = useState(false);
+  const [assignSearch, setAssignSearch] = useState("");
+  const [assignVisibleCount, setAssignVisibleCount] = useState(10);
+
   
   const [dbStats, setDbStats] = useState<Record<string, number>>({});
   const [backupData, setBackupData] = useState<any[]>([]);
@@ -351,9 +378,17 @@ export default function DatabasePage() {
   useEffect(() => {
     async function initData() {
       setIsStatsLoading(true);
-      const { data, error } = await getDatabaseStats();
-      if (data) setDbStats(data);
-      if (error) toast.error("Gagal mengambil statistik DB");
+      const [statsRes, participantsRes, classesRes] = await Promise.all([
+        getDatabaseStats(),
+        getParticipants(),
+        getClasses()
+      ]);
+      
+      if (statsRes.data) setDbStats(statsRes.data);
+      if (participantsRes.data) setParticipantsList(participantsRes.data as any);
+      if (classesRes.data) setClassList(classesRes.data as any);
+      
+      if (statsRes.error) toast.error("Gagal mengambil statistik DB");
       setIsStatsLoading(false);
     }
     initData();
@@ -408,19 +443,32 @@ export default function DatabasePage() {
   const filteredBackupData = useMemo(() => {
     function getDateStr(item: any): string {
       if ("createdAt" in item && backupSource === "payments") return item.createdAt;
-      if ("date" in item && backupSource === "attendance_records") return item.date;
+      if ("date" in item && (backupSource === "attendance_records" || backupSource === "student_attendance")) return item.date;
       if ("timestamp" in item && backupSource === "activity_logs") return item.timestamp;
       return "";
     }
 
     return backupData.filter((item) => {
-      if (backupSource === "payments" && filterPackage !== "all") {
-        if (item.package?.nama !== filterPackage) return false;
-      }
 
       const dateStr = getDateStr(item);
       if (!dateStr) return true;
       const itemDate = new Date(dateStr);
+      
+      // Additional filters based on source
+      if (backupSource === "payments") {
+        if (filterPackage !== "all" && item.package?.nama !== filterPackage) {
+          return false;
+        }
+      }
+
+      if (backupSource === "student_attendance") {
+        if (selectedStudentId && item.studentId !== selectedStudentId) {
+          return false;
+        }
+        if (filterClass !== "all" && item.className !== filterClass) {
+          return false;
+        }
+      }
       
       if (filterMode === "month") {
         return (
@@ -435,7 +483,7 @@ export default function DatabasePage() {
         return true;
       }
     });
-  }, [backupData, backupSource, filterMode, filterMonth, filterRange, filterPackage]);
+  }, [backupData, backupSource, filterMode, filterMonth, filterRange, filterPackage, selectedStudentId, filterClass]);
 
   function handleExportCsv() {
     if (filteredBackupData.length === 0) {
@@ -472,6 +520,17 @@ export default function DatabasePage() {
           });
         }
       }
+    } else if (backupSource === "student_attendance") {
+      exportData = filteredBackupData.map(item => ({
+        id: item.id,
+        attendance_record_id: item.attendanceRecordId,
+        student_id: item.studentId,
+        student_name: item.studentName,
+        status: item.status,
+        date: item.date,
+        className: item.className,
+        teacherName: item.teacherName,
+      }));
     } else {
       exportData = filteredBackupData.map(item => {
         const newItem: any = { ...item };
@@ -495,7 +554,8 @@ export default function DatabasePage() {
 
     const label = 
       backupSource === "payments" ? "pembayaran" : 
-      backupSource === "attendance_records" ? "presensi" : "logs";
+      backupSource === "attendance_records" ? "presensi_pelajaran" : 
+      backupSource === "student_attendance" ? "presensi_siswa" : "logs";
     const dateLabel =
       filterMode === "month"
         ? filterMonth
@@ -867,6 +927,56 @@ export default function DatabasePage() {
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     )}
+
+                    {backupSource === "student_attendance" && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setClassSearchQuery("");
+                            setClassVisibleCount(10);
+                            setIsClassSearchOpen(true);
+                          }}
+                          className={`h-9 gap-2 ${filterClass !== "all" ? "border-primary text-primary" : ""}`}
+                        >
+                          <Layers className="h-4 w-4" />
+                          {filterClass === "all" ? "Semua Kelas" : filterClass}
+                          {filterClass !== "all" && (
+                            <X 
+                              className="h-3 w-3 ml-1 hover:text-destructive" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFilterClass("all");
+                              }} 
+                            />
+                          )}
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setAssignSearch("");
+                            setAssignVisibleCount(10);
+                            setIsStudentSearchOpen(true);
+                          }}
+                          className={`h-9 gap-2 ${selectedStudentId ? "border-primary text-primary" : ""}`}
+                        >
+                          <UserSearch className="h-4 w-4" />
+                          {selectedStudentName || "Pilih Siswa"}
+                          {selectedStudentId && (
+                            <X 
+                              className="h-3 w-3 ml-1 hover:text-destructive" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudentId("");
+                                setSelectedStudentName("");
+                              }} 
+                            />
+                          )}
+                        </Button>
+                      </div>
+                    )}
+
                     <Button
                       onClick={handleExportCsv}
                       disabled={filteredBackupData.length === 0}
@@ -907,6 +1017,14 @@ export default function DatabasePage() {
                               <TableHead className="font-semibold text-xs">Pengajar</TableHead>
                               <TableHead className="font-semibold text-xs">Peserta</TableHead>
                               <TableHead className="font-semibold text-xs">Tanggal</TableHead>
+                            </>
+                          ) : backupSource === "student_attendance" ? (
+                             <>
+                              <TableHead className="font-semibold text-xs">Siswa</TableHead>
+                              <TableHead className="font-semibold text-xs">Kelas</TableHead>
+                              <TableHead className="font-semibold text-xs">Status</TableHead>
+                              <TableHead className="font-semibold text-xs">Tanggal</TableHead>
+                              <TableHead className="font-semibold text-xs">Pengajar</TableHead>
                             </>
                           ) : (
                             <>
@@ -976,6 +1094,31 @@ export default function DatabasePage() {
                                     year: "numeric",
                                   })}
                                 </TableCell>
+                              </>
+                            ) : backupSource === "student_attendance" ? (
+                               <>
+                                <TableCell className="text-xs font-medium">{String(row.studentName)}</TableCell>
+                                <TableCell className="text-xs">{String(row.className)}</TableCell>
+                                <TableCell className="text-xs">
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      row.status === "present"
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : "border-rose-200 bg-rose-50 text-rose-700"
+                                    }
+                                  >
+                                    {row.status === "present" ? "Hadir" : "Absen"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(String(row.date)).toLocaleDateString("id-ID", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{String(row.teacherName)}</TableCell>
                               </>
                             ) : (
                               <>
@@ -1102,6 +1245,184 @@ export default function DatabasePage() {
                 })()}
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+        {/* Class Search Modal */}
+        <Dialog open={isClassSearchOpen} onOpenChange={setIsClassSearchOpen}>
+          <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Layers className="h-5 w-5 text-primary" /> Pilih Kelas</DialogTitle>
+              <DialogDescription>Cari dan pilih kelas untuk memfilter log kehadiran.</DialogDescription>
+            </DialogHeader>
+            <div className="py-2 space-y-4 flex flex-col overflow-hidden">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Cari nama kelas..." 
+                  className="pl-9" 
+                  value={classSearchQuery} 
+                  onChange={(e) => {
+                    setClassSearchQuery(e.target.value);
+                    setClassVisibleCount(10);
+                  }} 
+                />
+              </div>
+              
+              <div className="flex-grow overflow-y-auto space-y-2 pr-2">
+                {(() => {
+                  const filteredClasses = classList.filter(cls => 
+                    cls.name.toLowerCase().includes(classSearchQuery.toLowerCase())
+                  );
+                  const visibleClasses = filteredClasses.slice(0, classVisibleCount);
+                  
+                  if (visibleClasses.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        Tidak ada kelas ditemukan.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <div 
+                        onClick={() => {
+                          setFilterClass("all");
+                          setIsClassSearchOpen(false);
+                        }}
+                        className={`
+                          flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer
+                          ${filterClass === "all" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"}
+                        `}
+                      >
+                        <p className="font-medium text-sm">Semua Kelas</p>
+                        {filterClass === "all" && <Badge className="bg-primary hover:bg-primary text-[10px]">Terpilih</Badge>}
+                      </div>
+
+                      {visibleClasses.map((cls) => {
+                        const isSelected = filterClass === cls.name;
+                        
+                        return (
+                          <div 
+                            key={cls.id} 
+                            onClick={() => {
+                              setFilterClass(cls.name);
+                              setIsClassSearchOpen(false);
+                            }}
+                            className={`
+                              flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer
+                              ${isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"}
+                            `}
+                          >
+                            <p className="font-medium text-sm">{cls.name}</p>
+                            {isSelected && (
+                              <Badge className="bg-primary hover:bg-primary text-[10px]">Terpilih</Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                      
+                      {filteredClasses.length > classVisibleCount && (
+                        <button 
+                          onClick={() => setClassVisibleCount(prev => prev + 10)}
+                          className="w-full py-3 text-xs text-primary font-medium hover:underline transition-all"
+                        >
+                          Load More (+10 Kelas)
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+            <DialogFooter className="border-t pt-4">
+              <Button variant="outline" onClick={() => setIsClassSearchOpen(false)}>Tutup</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Student Search Modal */}
+        <Dialog open={isStudentSearchOpen} onOpenChange={setIsStudentSearchOpen}>
+          <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><UserSearch className="h-5 w-5 text-primary" /> Pilih Siswa</DialogTitle>
+              <DialogDescription>Cari dan pilih siswa untuk memfilter log kehadiran.</DialogDescription>
+            </DialogHeader>
+            <div className="py-2 space-y-4 flex flex-col overflow-hidden">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Cari nama atau email siswa..." 
+                  className="pl-9" 
+                  value={assignSearch} 
+                  onChange={(e) => {
+                    setAssignSearch(e.target.value);
+                    setAssignVisibleCount(10);
+                  }} 
+                />
+              </div>
+              
+              <div className="flex-grow overflow-y-auto space-y-2 pr-2">
+                {(() => {
+                  const filteredParticipants = participantsList.filter(p => 
+                    p.name.toLowerCase().includes(assignSearch.toLowerCase()) || 
+                    p.email.toLowerCase().includes(assignSearch.toLowerCase())
+                  );
+                  const visibleParticipants = filteredParticipants.slice(0, assignVisibleCount);
+                  
+                  if (visibleParticipants.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        Tidak ada siswa ditemukan.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <>
+                      {visibleParticipants.map((p) => {
+                        const isSelected = selectedStudentId === p.id;
+                        
+                        return (
+                          <div 
+                            key={p.id} 
+                            onClick={() => {
+                              setSelectedStudentId(p.id);
+                              setSelectedStudentName(p.name);
+                              setIsStudentSearchOpen(false);
+                            }}
+                            className={`
+                              flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer
+                              ${isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted/50"}
+                            `}
+                          >
+                            <div className="space-y-0.5">
+                              <p className="font-medium text-sm">{p.name}</p>
+                              <p className="text-xs text-muted-foreground">{p.email}</p>
+                            </div>
+                            {isSelected && (
+                              <Badge className="bg-primary hover:bg-primary text-[10px]">Terpilih</Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                      
+                      {filteredParticipants.length > assignVisibleCount && (
+                        <button 
+                          onClick={() => setAssignVisibleCount(prev => prev + 10)}
+                          className="w-full py-3 text-xs text-primary font-medium hover:underline transition-all"
+                        >
+                          Load More (+10 Siswa)
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+            <DialogFooter className="border-t pt-4">
+              <Button variant="outline" onClick={() => setIsStudentSearchOpen(false)}>Tutup</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
