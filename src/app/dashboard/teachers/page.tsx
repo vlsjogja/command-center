@@ -508,9 +508,9 @@ export default function TeachersPage() {
                   Isi data profil dan pilih kelas yang akan diampu.
                 </DialogDescription>
               </DialogHeader>
-              <ScrollArea className="flex-1 px-6">
+              <div className="flex-1 px-6 max-h-[60vh] overflow-y-auto" role="presentation">
                 {formFields}
-              </ScrollArea>
+              </div>
               <DialogFooter className="px-6 pb-6 pt-2 bg-muted/30 mt-auto">
                 <Button variant="outline" onClick={() => setIsAddOpen(false)}>Batal</Button>
                 <Button onClick={handleAdd}>Simpan Pengajar</Button>
@@ -766,9 +766,9 @@ export default function TeachersPage() {
                 Perbarui data profil dan jadwal mengajar pengajar ini.
               </DialogDescription>
             </DialogHeader>
-            <ScrollArea className="flex-1 px-6">
+            <div className="flex-1 px-6 max-h-[60vh] overflow-y-auto" role="presentation">
               {formFields}
-            </ScrollArea>
+            </div>
             <DialogFooter className="p-6 pt-2 bg-muted/30 mt-auto">
               <Button variant="outline" onClick={() => setIsEditOpen(false)}>Batal</Button>
               <Button onClick={handleEdit}>Perbarui Data</Button>
