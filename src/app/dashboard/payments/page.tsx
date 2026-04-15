@@ -398,6 +398,14 @@ export default function PaymentsPage() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  const formatPhoneForWhatsapp = (phone: string) => {
+    let cleaned = phone.replace(/\D/g, "");
+    if (cleaned.startsWith("0")) {
+      cleaned = "62" + cleaned.substring(1);
+    }
+    return cleaned;
+  };
+
   const formFields = (
     <div className="grid gap-4 py-4">
       <div className="grid grid-cols-2 gap-4">
@@ -573,33 +581,34 @@ export default function PaymentsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 rounded-lg hover:bg-success/10 hover:text-success"
-                                onClick={() => {
-                                  if (!participant?.phone) return toast.error("Nomor telepon peserta tidak tersedia");
-                                  const targetDate = payment.nextBillingDate ?? payment.billingTime;
-                                  
-                                  const templateKey = activeTab === "belumBayar" ? "payment_reminder" : "overdue_reminder";
-                                  const template = messageTemplates[templateKey];
-                                  
-                                  let message = "";
-                                  if (template) {
-                                    // Use template from database
-                                    message = template
-                                      .replace(/{{nama_siswa}}/g, participant.name)
-                                      .replace(/{{nominal_pembayaran}}/g, formatCurrency(payment.amount))
-                                      .replace(/{{nama_paket_pembayaran}}/g, pkg?.nama || "")
-                                      .replace(/{{tanggal_jatuh_tempo}}/g, formatDateWithDay(targetDate as string))
-                                      .replace(/{{bold_start}}/g, "*")
-                                      .replace(/{{bold_end}}/g, "*")
-                                      .replace(/{{break_space}}/g, "\n");
-                                  } else {
-                                    // Fallback to hardcoded message if template not found
-                                    const messagePrefix = activeTab === "belumBayar" ? "Jangan lupa untuk melakukan pembayaran" : "Peringatan:\n\nPembayaran Anda telah jatuh tempo sejak";
-                                    message = `Halo *${participant.name}*,\n\n${messagePrefix} paket ${pkg?.nama || ''} sebesar *${formatCurrency(payment.amount)}* sebelum tanggal *${formatDateWithDay(targetDate as string)}*.`;
-                                  }
-                                  
-                                  const text = encodeURIComponent(message);
-                                  window.open(`https://wa.me/${participant.phone}?text=${text}`, "_blank");
-                                }}
+                                  onClick={() => {
+                                   if (!participant?.phone) return toast.error("Nomor telepon peserta tidak tersedia");
+                                   const targetDate = payment.nextBillingDate ?? payment.billingTime;
+                                   
+                                   const templateKey = activeTab === "belumBayar" ? "payment_reminder" : "overdue_reminder";
+                                   const template = messageTemplates[templateKey];
+                                   
+                                   let message = "";
+                                   if (template) {
+                                     // Use template from database
+                                     message = template
+                                       .replace(/{{nama_siswa}}/g, participant.name)
+                                       .replace(/{{nominal_pembayaran}}/g, formatCurrency(payment.amount))
+                                       .replace(/{{nama_paket_pembayaran}}/g, pkg?.nama || "")
+                                       .replace(/{{nama_kelas}}/g, pkg?.nama || "")
+                                       .replace(/{{tanggal_jatuh_tempo}}/g, formatDateWithDay(targetDate as string))
+                                       .replace(/{{bold_start}}/g, "*")
+                                       .replace(/{{bold_end}}/g, "*")
+                                       .replace(/{{break_space}}/g, "\n");
+                                   } else {
+                                     // Fallback to hardcoded message if template not found
+                                     const messagePrefix = activeTab === "belumBayar" ? "Jangan lupa untuk melakukan pembayaran" : "Peringatan:\n\nPembayaran Anda telah jatuh tempo sejak";
+                                     message = `Halo *${participant.name}*,\n\n${messagePrefix} paket ${pkg?.nama || ''} sebesar *${formatCurrency(payment.amount)}* sebelum tanggal *${formatDateWithDay(targetDate as string)}*.`;
+                                   }
+                                   
+                                   const text = encodeURIComponent(message);
+                                   window.open(`https://wa.me/${formatPhoneForWhatsapp(participant.phone)}?text=${text}`, "_blank");
+                                 }}
                                 title="Reminder Pembayaran"
                               >
                                 <MessageCircle className="h-4 w-4" />

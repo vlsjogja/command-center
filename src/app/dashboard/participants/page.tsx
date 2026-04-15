@@ -433,7 +433,7 @@ export default function ParticipantsPage() {
       phone: p.phone,
       address: p.address,
       status: p.status,
-      createdAt: p.createdAt.split("T")[0],
+      createdAt: new Date(p.createdAt).toISOString().split("T")[0],
       reason: "",
     });
     setInitialStatus(p.status);

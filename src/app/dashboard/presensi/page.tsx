@@ -7,6 +7,7 @@ import {
   saveAttendanceRecord, 
   getTodayData 
 } from "./actions";
+import { getTemplates } from "../message-templates/actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,7 @@ export default function AttendancePage() {
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [allParticipants, setAllParticipants] = useState<Participant[]>([]);
+  const [teachingTemplate, setTeachingTemplate] = useState<string>("");
   
   const [isLoading, setIsLoading] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
@@ -141,6 +143,13 @@ export default function AttendancePage() {
 
     const { teachers, packages, allParticipants: participantsFromDB } = data;
     setAllParticipants(participantsFromDB as any);
+
+    // Fetch message templates
+    const { data: templates } = await getTemplates();
+    if (templates) {
+      const teachingRem = templates.find(t => t.key === "teaching_reminder");
+      if (teachingRem) setTeachingTemplate(teachingRem.content);
+    }
 
     const today = new Date();
     const dayName = DAYS_ID[today.getDay()];
@@ -330,6 +339,14 @@ export default function AttendancePage() {
     toast.info("Siswa tambahan dihapus.");
   };
 
+  const formatPhoneForWhatsapp = (phone: string) => {
+    let cleaned = phone.replace(/\D/g, "");
+    if (cleaned.startsWith("0")) {
+      cleaned = "62" + cleaned.substring(1);
+    }
+    return cleaned;
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
@@ -475,8 +492,21 @@ export default function AttendancePage() {
                             className="h-8 rounded-lg gap-1.5 text-[11px] font-semibold border-success/20 hover:bg-success/5 hover:text-success transition-all text-success"
                             onClick={() => {
                               if (!selectedClass.teacherPhone) return toast.error("Nomor telepon pengajar tidak tersedia");
-                              const text = encodeURIComponent(`Halo *${selectedClass.teacherName}*,\n\nAnda memiliki jadwal mengajar hari ini pukul *${selectedClass.startTime} WIB* untuk kelas ${selectedClass.className}.`);
-                              window.open(`https://wa.me/${selectedClass.teacherPhone}?text=${text}`, "_blank");
+                              
+                              let text = "";
+                              if (teachingTemplate) {
+                                text = teachingTemplate
+                                  .replace(/{{nama_pengajar}}/g, selectedClass.teacherName)
+                                  .replace(/{{nama_kelas}}/g, selectedClass.className)
+                                  .replace(/{{waktu_mengajar}}/g, `${selectedClass.startTime} WIB`)
+                                  .replace(/{{bold_start}}/g, "*")
+                                  .replace(/{{bold_end}}/g, "*")
+                                  .replace(/{{break_space}}/g, "\n");
+                              } else {
+                                text = `Halo *${selectedClass.teacherName}*,\n\nAnda memiliki jadwal mengajar hari ini pukul *${selectedClass.startTime} WIB* untuk kelas ${selectedClass.className}.`;
+                              }
+                              
+                              window.open(`https://wa.me/${formatPhoneForWhatsapp(selectedClass.teacherPhone)}?text=${encodeURIComponent(text)}`, "_blank");
                             }}
                           >
                             <MessageCircle className="h-3 w-3" /> Ingatkan Tutor
