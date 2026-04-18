@@ -58,6 +58,8 @@ import {
   getParticipants,
   getClasses
 } from "./actions";
+import { PaginationControls } from "@/components/ui/pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { 
   type User, 
   type Participant, 
@@ -353,6 +355,7 @@ export default function DatabasePage() {
   const [isPackageSelectOpen, setIsPackageSelectOpen] = useState(false);
   const [packageSearch, setPackageSearch] = useState("");
   const [packageVisibleCount, setPackageVisibleCount] = useState(5);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   // Student & Class filter state
   const [participantsList, setParticipantsList] = useState<Participant[]>([]);
@@ -404,6 +407,15 @@ export default function DatabasePage() {
       setIsBackupLoading(false);
     }
     fetchBackup();
+  }, [backupSource]);
+
+  // Reset filters when backup source changes
+  useEffect(() => {
+    setFilterStatus("all");
+    setFilterPackage("all");
+    setSelectedStudentId("");
+    setSelectedStudentName("");
+    setFilterClass("all");
   }, [backupSource]);
 
   // Fetch Table Preview when selected table changes
@@ -459,6 +471,9 @@ export default function DatabasePage() {
         if (filterPackage !== "all" && item.package?.nama !== filterPackage) {
           return false;
         }
+        if (filterStatus !== "all" && item.paymentStatus !== filterStatus) {
+            return false;
+        }
       }
 
       if (backupSource === "student_attendance") {
@@ -467,6 +482,9 @@ export default function DatabasePage() {
         }
         if (filterClass !== "all" && item.className !== filterClass) {
           return false;
+        }
+        if (filterStatus !== "all" && item.status !== filterStatus) {
+            return false;
         }
       }
       
@@ -483,7 +501,16 @@ export default function DatabasePage() {
         return true;
       }
     });
-  }, [backupData, backupSource, filterMode, filterMonth, filterRange, filterPackage, selectedStudentId, filterClass]);
+  }, [backupData, backupSource, filterMode, filterMonth, filterRange, filterPackage, selectedStudentId, filterClass, filterStatus]);
+
+  // Pagination hook
+  const {
+    currentPage,
+    totalPages,
+    paginatedData,
+    goToPage,
+    totalItems,
+  } = usePagination({ data: filteredBackupData, itemsPerPage: 20 });
 
   function handleExportCsv() {
     if (filteredBackupData.length === 0) {
@@ -977,6 +1004,30 @@ export default function DatabasePage() {
                       </div>
                     )}
 
+                    {(backupSource === "payments" || backupSource === "student_attendance") && (
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="w-[150px] h-9 bg-background">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua Status</SelectItem>
+                          {backupSource === "payments" ? (
+                            <>
+                              <SelectItem value="success">Lunas (Success)</SelectItem>
+                              <SelectItem value="pending">Menunggu (Pending)</SelectItem>
+                              <SelectItem value="overdue">Jatuh Tempo (Overdue)</SelectItem>
+                              <SelectItem value="canceled">Dibatalkan (Canceled)</SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="present">Hadir (Present)</SelectItem>
+                              <SelectItem value="absent">Absen (Absent)</SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+
                     <Button
                       onClick={handleExportCsv}
                       disabled={filteredBackupData.length === 0}
@@ -1038,9 +1089,11 @@ export default function DatabasePage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(filteredBackupData as any[]).slice(0, 20).map((row, idx) => (
+                        {(paginatedData as any[]).map((row, idx) => (
                           <TableRow key={idx} className="hover:bg-muted/30">
-                            <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {(currentPage - 1) * 20 + idx + 1}
+                            </TableCell>
                             {backupSource === "payments" ? (
                               <>
                                 <TableCell className="text-xs font-mono">{String(row.id).slice(0, 8)}...</TableCell>
@@ -1147,10 +1200,16 @@ export default function DatabasePage() {
                     </Table>
                   </div>
                 )}
-                {filteredBackupData.length > 20 && (
-                  <p className="text-xs text-muted-foreground mt-2 text-center">
-                    Menampilkan 20 dari {filteredBackupData.length} data. Semua data akan diexport.
-                  </p>
+                {totalItems > 0 && (
+                  <div className="mt-4 border-t pt-2">
+                    <PaginationControls
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={goToPage}
+                      totalItems={totalItems}
+                      itemsPerPage={20}
+                    />
+                  </div>
                 )}
               </CardContent>
             </Card>
