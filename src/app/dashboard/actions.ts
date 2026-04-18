@@ -76,11 +76,21 @@ export async function getDashboardData(userId?: string, role?: string) {
       });
 
       allPayments.forEach(p => {
+        const pDate = p.paymentTime ? new Date(p.paymentTime) : null;
+        const bDate = p.billingTime ? new Date(p.billingTime) : null;
+        
+        const isPaidThisMonth = pDate && pDate >= firstDayOfMonth;
+        const isBilledThisMonth = bDate && bDate >= firstDayOfMonth;
+
         if (p.paymentStatus === "success") {
-          revenueThisMonth += p.amount;
-          successCount++;
+          if (isPaidThisMonth) {
+            revenueThisMonth += p.amount;
+            successCount++;
+          }
         } else if (p.paymentStatus === "pending" || p.paymentStatus === "overdue") {
-          pendingCount++;
+          if (isBilledThisMonth) {
+            pendingCount++;
+          }
         }
       });
     }
